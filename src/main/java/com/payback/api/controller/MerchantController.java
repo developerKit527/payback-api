@@ -4,12 +4,12 @@ import com.payback.api.dto.MerchantDTO;
 import com.payback.api.service.MerchantService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/v1/merchants")
-@CrossOrigin(origins = {"http://localhost:5173", "http://localhost:5174"})
 public class MerchantController {
 
     private final MerchantService merchantService;
@@ -25,8 +25,14 @@ public class MerchantController {
     }
 
     @GetMapping("/{id}/click")
-    public ResponseEntity<Void> incrementClickCount(@PathVariable Long id) {
-        merchantService.incrementClickCount(id);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<Map<String, String>> incrementClickCount(@PathVariable Long id) {
+        String url = merchantService.incrementClickCount(id);
+        Map<String, String> response = new HashMap<>();
+        if (url == null || url.isEmpty()) {
+            response.put("error", "Merchant URL not configured");
+            return ResponseEntity.status(404).body(response);
+        }
+        response.put("url", url);
+        return ResponseEntity.ok(response);
     }
 }
