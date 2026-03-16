@@ -8,7 +8,7 @@ public interface MerchantService {
     
     List<MerchantDTO> getAllMerchants();
     
-    void incrementClickCount(Long merchantId);
+    String incrementClickCount(Long merchantId);
     
     void initializeSeedData();
 }

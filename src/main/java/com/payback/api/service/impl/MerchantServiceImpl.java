@@ -28,12 +28,13 @@ public class MerchantServiceImpl implements MerchantService {
     
     @Override
     @Transactional
-    public void incrementClickCount(Long merchantId) {
+    public String incrementClickCount(Long merchantId) {
         Merchant merchant = merchantRepository.findById(merchantId)
                 .orElseThrow(() -> new EntityNotFoundException("Merchant with id " + merchantId + " not found"));
         
         merchant.setClickCount(merchant.getClickCount() + 1);
         merchantRepository.save(merchant);
+        return merchant.getManualTrackingUrl();
     }
     
     @Override
