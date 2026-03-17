@@ -2,6 +2,7 @@ package com.payback.api.controller;
 
 import com.payback.api.dto.WalletResponseDTO;
 import com.payback.api.service.WalletService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +18,11 @@ public class WalletController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<WalletResponseDTO> getMyWallet(Authentication authentication) {
+    public ResponseEntity<?> getMyWallet(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body("{\"error\":\"UNAUTHORIZED\",\"message\":\"Authentication required\"}");
+        }
         Long userId = (Long) authentication.getPrincipal();
         return ResponseEntity.ok(walletService.getWalletByUserId(userId));
     }
