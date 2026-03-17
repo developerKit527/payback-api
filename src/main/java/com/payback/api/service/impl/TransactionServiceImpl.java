@@ -1,10 +1,12 @@
 package com.payback.api.service.impl;
 
 import com.payback.api.dto.TransactionDTO;
+import com.payback.api.entity.Merchant;
 import com.payback.api.entity.Transaction;
 import com.payback.api.entity.TransactionStatus;
 import com.payback.api.entity.Wallet;
 import com.payback.api.exception.EntityNotFoundException;
+import com.payback.api.repository.MerchantRepository;
 import com.payback.api.repository.TransactionRepository;
 import com.payback.api.repository.WalletRepository;
 import com.payback.api.service.TransactionService;
@@ -23,6 +25,7 @@ public class TransactionServiceImpl implements TransactionService {
     
     private final TransactionRepository transactionRepository;
     private final WalletRepository walletRepository;
+    private final MerchantRepository merchantRepository;
     
     @Override
     @Transactional
@@ -40,6 +43,29 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setCreatedAt(LocalDateTime.now());
         
         return transactionRepository.save(transaction);
+    }
+    
+    @Override
+    @Transactional
+    public TransactionDTO createTransactionForUser(Long userId, Long merchantId, BigDecimal orderAmount) {
+        Wallet wallet = walletRepository.findByUserId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("Wallet not found for user " + userId));
+        
+        Merchant merchant = merchantRepository.findById(merchantId)
+                .orElseThrow(() -> new EntityNotFoundException("Merchant with id " + merchantId + " not found"));
+        
+        BigDecimal cashbackAmount = orderAmount.multiply(
+                BigDecimal.valueOf(merchant.getCashbackRate() / 100.0));
+        
+        Transaction transaction = new Transaction();
+        transaction.setWallet(wallet);
+        transaction.setMerchantName(merchant.getName());
+        transaction.setOrderAmount(orderAmount);
+        transaction.setCashbackAmount(cashbackAmount);
+        transaction.setStatus(TransactionStatus.PENDING);
+        transaction.setCreatedAt(LocalDateTime.now());
+        
+        return convertToDTO(transactionRepository.save(transaction));
     }
     
     @Override

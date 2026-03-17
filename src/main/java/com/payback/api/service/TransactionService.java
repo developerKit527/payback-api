@@ -12,6 +12,8 @@ public interface TransactionService {
     Transaction createTransaction(Long walletId, String merchantName, 
                                   BigDecimal orderAmount, BigDecimal cashbackAmount);
     
+    TransactionDTO createTransactionForUser(Long userId, Long merchantId, BigDecimal orderAmount);
+    
     void updateTransactionStatus(Long transactionId, TransactionStatus newStatus);
     
     List<TransactionDTO> getTransactionsByWallet(Long walletId);

@@ -209,3 +209,19 @@ This document defines the requirements for the Merchant & Wallet Service, the co
 3. GET /api/v1/health SHALL be publicly accessible without a JWT token
 4. POST /api/v1/auth/register SHALL be publicly accessible without a JWT token
 5. POST /api/v1/auth/login SHALL be publicly accessible without a JWT token
+
+### Requirement 16: Transaction Creation on Merchant Click
+
+**User Story:** As a logged-in user, I want a transaction record created when I click "Shop Now", so that my cashback earnings are tracked from the moment I visit a merchant.
+
+#### Acceptance Criteria
+
+1. THE API_Gateway SHALL expose a POST /api/v1/transactions endpoint that requires a valid JWT in the Authorization header
+2. THE request body SHALL accept merchantId (Long) and orderAmount (BigDecimal)
+3. WHEN a valid request is received, THE Transaction_Engine SHALL resolve the authenticated user's wallet using the userId from the JWT claims
+4. THE Transaction_Engine SHALL look up the merchant by merchantId and calculate cashbackAmount as orderAmount × (cashbackRate / 100)
+5. THE Transaction_Engine SHALL create a new Transaction with status PENDING, linked to the authenticated user's wallet, and return HTTP status 201 with the created TransactionDTO
+6. IF the merchantId does not exist, THE API_Gateway SHALL return HTTP status 404
+7. IF the authenticated user has no wallet, THE API_Gateway SHALL return HTTP status 404
+8. IF the request is made without a valid JWT, THE API_Gateway SHALL return HTTP status 401
+9. THE POST /api/v1/transactions endpoint SHALL be added to the authenticated routes in the security configuration

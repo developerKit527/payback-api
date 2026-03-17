@@ -152,6 +152,26 @@ Client → GET /api/v1/wallet/{userId} → WalletController → WalletService
 
 #### Auth Endpoints
 
+**POST /api/v1/transactions**
+- Description: Create a PENDING transaction for the authenticated user when they click through to a merchant
+- Request: `Authorization: Bearer <token>` header required
+- Request body: `{ "merchantId": 1, "orderAmount": 2000.00 }`
+- Response: `201 Created`
+```json
+{
+  "id": 5,
+  "merchantName": "Flipkart",
+  "orderAmount": 2000.00,
+  "cashbackAmount": 200.00,
+  "status": "PENDING",
+  "createdAt": "2026-03-17T10:30:00"
+}
+```
+- Error: `404 Not Found` if merchantId or user wallet does not exist
+- Error: `401 Unauthorized` if JWT is missing or invalid
+
+#### Auth Endpoints
+
 **POST /api/v1/auth/register**
 - Description: Register a new user account
 - Request body: `{ "name": "string", "email": "string", "password": "string" }`
@@ -491,6 +511,16 @@ public enum TransactionStatus {
 ```
 
 ### DTO Specifications
+
+#### CreateTransactionRequestDTO
+
+```java
+@Data
+public class CreateTransactionRequestDTO {
+    private Long merchantId;
+    private BigDecimal orderAmount;
+}
+```
 
 #### RegisterRequestDTO / LoginRequestDTO
 
@@ -890,6 +920,18 @@ After reflection, the following properties provide unique validation value:
 *For any* valid JWT, GET /api/v1/wallet/me should return the wallet belonging to the userId encoded in the token, never another user's wallet.
 
 **Validates: Requirements 14.2**
+
+### Property 43: Transaction Created on Merchant Click
+
+*For any* authenticated user with a valid wallet and a valid merchantId, a POST /api/v1/transactions request should create exactly one PENDING transaction linked to that user's wallet, with cashbackAmount equal to orderAmount × (cashbackRate / 100).
+
+**Validates: Requirements 16.3, 16.4, 16.5**
+
+### Property 44: Transaction Creation Requires Authentication
+
+*For any* POST /api/v1/transactions request without a valid JWT, the response should be HTTP status 401 and no transaction should be created.
+
+**Validates: Requirements 16.8**
 
 ## Error Handling
 

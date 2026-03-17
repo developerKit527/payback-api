@@ -350,48 +350,84 @@ The implementation follows a bottom-up approach: entities first, then repositori
     - **Property 42: Authenticated Wallet Returns Own Data Only**
     - _Requirements: 11.3, 11.4, 11.5, 12.3, 12.4, 13.3, 13.4, 14.1, 14.2_
 
-- [ ] 12. Final checkpoint - Ensure all tests pass
+- [-] 14. Implement transaction creation endpoint
+
+  - [x] 14.1 Create CreateTransactionRequestDTO
+    - Create `com.payback.api.dto.CreateTransactionRequestDTO` with fields: merchantId (Long), orderAmount (BigDecimal)
+    - Add Lombok @Data annotation
+    - _Requirements: 16.2_
+
+  - [x] 14.2 Add createTransactionForUser() to TransactionService
+    - Add method `TransactionDTO createTransactionForUser(Long userId, Long merchantId, BigDecimal orderAmount)` to TransactionService interface
+    - Implement in TransactionServiceImpl:
+      - Look up wallet by userId (throw EntityNotFoundException if not found)
+      - Look up merchant by merchantId (throw EntityNotFoundException if not found)
+      - Calculate cashbackAmount = orderAmount × (merchant.cashbackRate / 100)
+      - Create and save Transaction with PENDING status linked to the wallet
+      - Return TransactionDTO
+    - _Requirements: 16.3, 16.4, 16.5, 16.6, 16.7_
+
+  - [x] 14.3 Create TransactionController
+    - Create `com.payback.api.controller.TransactionController` with @RequestMapping("/api/v1/transactions")
+    - Implement POST / endpoint: extract userId from Authentication principal, call transactionService.createTransactionForUser(), return 201 with TransactionDTO
+    - _Requirements: 16.1, 16.5_
+
+  - [x] 14.4 Update SecurityConfig to protect POST /api/v1/transactions
+    - Add `.requestMatchers(HttpMethod.POST, "/api/v1/transactions").authenticated()` to the security filter chain
+    - _Requirements: 16.8, 16.9_
+
+  - [ ]* 14.5 Write property tests for transaction creation endpoint
+    - **Property 43: Transaction Created on Merchant Click**
+    - **Property 44: Transaction Creation Requires Authentication**
+    - _Requirements: 16.3, 16.4, 16.5, 16.8_
+
+- [ ] 15. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 13. Integration verification and manual testing
-  - [ ] 13.1 Verify database schema creation
+- [ ] 16. Integration verification and manual testing
+  - [ ] 16.1 Verify database schema creation
     - Start application and verify four tables created: users, merchants, wallets, transactions
     - Verify foreign key constraint from transactions to wallets
     - Verify unique constraint on wallets.user_id and users.email
     - _Requirements: 8.3, 8.4, 8.5_
   
-  - [ ] 13.2 Verify seed data loaded correctly
+  - [ ] 16.2 Verify seed data loaded correctly
     - Query database to confirm 3 merchants exist
     - Query database to confirm 1 wallet exists for userId = 1
     - Query database to confirm 2 PENDING transactions exist
     - _Requirements: 10.1, 10.2, 10.3_
   
-  - [ ] 13.3 Test merchant listing endpoint
+  - [ ] 16.3 Test merchant listing endpoint
     - Call GET /api/v1/merchants and verify response contains 3 merchants
     - Verify merchants are sorted by clickCount
     - Verify JSON format matches MerchantDTO structure
     - _Requirements: 1.2, 1.5, 9.1_
   
-  - [ ] 13.4 Test click tracking endpoint
+  - [ ] 16.4 Test click tracking endpoint
     - Call POST /api/v1/merchants/1/click and verify 200 response
     - Call GET /api/v1/merchants and verify clickCount incremented
     - Call POST /api/v1/merchants/999/click and verify 404 response
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
   
-  - [ ] 13.5 Test wallet retrieval endpoint
+  - [ ] 16.5 Test wallet retrieval endpoint
     - Call GET /api/v1/wallet/1 and verify response contains wallet data
     - Verify totalEarned = 327.50, pendingAmount = 327.50, availableBalance = 0.00
     - Verify transactions array contains 2 items ordered by createdAt desc
     - _Requirements: 6.1, 6.2, 6.3, 7.1, 7.2, 7.3, 7.4_
 
-  - [ ] 13.6 Test auth endpoints
+  - [ ] 16.6 Test auth endpoints
     - POST /api/v1/auth/register with new email → 201 + JWT
     - POST /api/v1/auth/register with duplicate email → 400
     - POST /api/v1/auth/login with valid credentials → 200 + JWT
     - POST /api/v1/auth/login with wrong password → 400 (generic message)
     - GET /api/v1/wallet/me with valid JWT → 200 + wallet data
     - GET /api/v1/wallet/me without JWT → 401
-    - _Requirements: 11.1, 11.2, 11.3, 12.1, 12.2, 12.3, 14.1, 14.2_
+  - [ ] 16.7 Test transaction creation endpoint
+    - POST /api/v1/transactions with valid JWT + merchantId + orderAmount → 201 + TransactionDTO
+    - POST /api/v1/transactions without JWT → 401
+    - POST /api/v1/transactions with invalid merchantId → 404
+    - Verify transaction appears in GET /api/v1/wallet/me response
+    - _Requirements: 16.1, 16.5, 16.6, 16.7, 16.8_
 
 ## Notes
 
