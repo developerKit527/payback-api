@@ -153,3 +153,59 @@ This document defines the requirements for the Merchant & Wallet Service, the co
 3. WHEN the application starts for the first time, THE Transaction_Engine SHALL verify and insert two PENDING transactions for user identifier 1 if they do not exist
 4. THE Database SHALL support idempotent seed data initialization to prevent duplicate records on restart
 5. FOR ALL seed data operations, THE Database SHALL complete initialization before accepting API requests
+
+### Requirement 11: User Registration
+
+**User Story:** As a new user, I want to create an account, so that I can track my personal cashback.
+
+#### Acceptance Criteria
+
+1. THE API_Gateway SHALL expose a POST /api/v1/auth/register endpoint accepting name, email, and password fields
+2. WHEN a registration request is received with a unique email, THE API_Gateway SHALL return HTTP status 201 with a JWT token and user info (id, name, email)
+3. IF a registration request is received with an already-registered email, THEN THE API_Gateway SHALL return HTTP status 400
+4. WHEN a new user registers successfully, THE Wallet_Service SHALL automatically create a wallet for that user
+5. THE Auth_Service SHALL store passwords as bcrypt hashes and SHALL never store or return plaintext passwords
+
+### Requirement 12: User Login
+
+**User Story:** As a returning user, I want to log in, so that I can access my wallet.
+
+#### Acceptance Criteria
+
+1. THE API_Gateway SHALL expose a POST /api/v1/auth/login endpoint accepting email and password fields
+2. WHEN a login request is received with valid credentials, THE API_Gateway SHALL return HTTP status 200 with a JWT token and user info (id, name, email)
+3. IF a login request is received with an email that does not exist or a wrong password, THEN THE API_Gateway SHALL return HTTP status 400
+4. THE Auth_Service SHALL never reveal which specific field (email or password) caused the authentication failure, to prevent user enumeration attacks
+
+### Requirement 13: JWT Token Security
+
+**User Story:** As a platform operator, I want stateless JWT auth, so that the API scales without sessions.
+
+#### Acceptance Criteria
+
+1. THE Auth_Service SHALL sign all JWT tokens using HS256 algorithm with the value of the JWT_SECRET environment variable
+2. THE Auth_Service SHALL set token expiry to 24 hours (86400000 ms) from the time of issuance
+3. THE Auth_Service SHALL embed userId, email, and name as claims within the JWT token
+4. WHEN a request is received with an invalid or expired JWT token on a protected endpoint, THE API_Gateway SHALL return HTTP status 401
+
+### Requirement 14: Protected Wallet Endpoint
+
+**User Story:** As a user, I want my wallet to be private, so that only I can see my balance.
+
+#### Acceptance Criteria
+
+1. THE API_Gateway SHALL expose a GET /api/v1/wallet/me endpoint that requires a valid JWT in the Authorization header (Bearer scheme)
+2. WHEN a valid JWT is provided, THE Wallet_Service SHALL return the wallet and transaction history for the authenticated user only
+3. THE existing GET /api/v1/wallet/{userId} endpoint SHALL remain publicly accessible for backward compatibility
+
+### Requirement 15: Public Endpoints
+
+**User Story:** As a visitor, I want to browse merchants without logging in, so that I can explore before registering.
+
+#### Acceptance Criteria
+
+1. GET /api/v1/merchants SHALL be publicly accessible without a JWT token
+2. POST /api/v1/merchants/{id}/click SHALL be publicly accessible without a JWT token
+3. GET /api/v1/health SHALL be publicly accessible without a JWT token
+4. POST /api/v1/auth/register SHALL be publicly accessible without a JWT token
+5. POST /api/v1/auth/login SHALL be publicly accessible without a JWT token

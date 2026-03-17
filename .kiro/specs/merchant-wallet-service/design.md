@@ -2,11 +2,12 @@
 
 ## Overview
 
-The Merchant & Wallet Service is the core backend engine for PayBack India, a cashback aggregator platform targeting the Indian e-commerce market. This service provides three primary capabilities:
+The Merchant & Wallet Service is the core backend engine for PayBack India, a cashback aggregator platform targeting the Indian e-commerce market. This service provides four primary capabilities:
 
 1. **Merchant Management**: Store and retrieve merchant information with popularity-based sorting
 2. **Click Tracking**: Monitor user engagement with merchant affiliate links
 3. **Wallet & Transaction System**: Track cashback earnings with detailed transaction history
+4. **Authentication**: Stateless JWT-based user registration and login
 
 The system follows a transaction-based wallet model where each purchase creates an individual transaction record, enabling users to see detailed history of every cashback earning. Transactions progress through states (PENDING → CONFIRMED/REJECTED) that determine when cashback becomes available for withdrawal.
 
@@ -149,10 +150,34 @@ Client → GET /api/v1/wallet/{userId} → WalletController → WalletService
 - Request: Path parameter `id` (Long)
 - Response: `200 OK` (empty body) or `404 Not Found`
 
+#### Auth Endpoints
+
+**POST /api/v1/auth/register**
+- Description: Register a new user account
+- Request body: `{ "name": "string", "email": "string", "password": "string" }`
+- Response: `201 Created`
+```json
+{
+  "token": "eyJhbGci...",
+  "user": { "id": 1, "name": "Alice", "email": "alice@example.com" }
+}
+```
+- Error: `400 Bad Request` if email already registered
+
+**POST /api/v1/auth/login**
+- Description: Authenticate an existing user
+- Request body: `{ "email": "string", "password": "string" }`
+- Response: `200 OK` (same shape as register) or `400 Bad Request` if credentials invalid
+
 #### Wallet Endpoints
 
+**GET /api/v1/wallet/me**
+- Description: Retrieve wallet for the authenticated user (requires JWT)
+- Request: `Authorization: Bearer <token>` header
+- Response: `200 OK` (same shape as below) or `401 Unauthorized`
+
 **GET /api/v1/wallet/{userId}**
-- Description: Retrieve wallet details and transaction history
+- Description: Retrieve wallet details and transaction history (public, backward-compatible)
 - Request: Path parameter `userId` (Long)
 - Response: `200 OK` or `404 Not Found`
 ```json
@@ -177,6 +202,22 @@ Client → GET /api/v1/wallet/{userId} → WalletController → WalletService
 ```
 
 ### Service Interfaces
+
+#### AuthService
+
+```java
+public interface AuthService {
+    AuthResponseDTO register(RegisterRequestDTO request);
+    AuthResponseDTO login(LoginRequestDTO request);
+}
+```
+
+**Responsibilities**:
+- Validate uniqueness of email on registration
+- Hash passwords with BCrypt before persistence
+- Issue signed JWT tokens (HS256, 24 h expiry) containing userId, email, name
+- Verify credentials on login without revealing which field failed
+- Auto-create a wallet for every newly registered user
 
 #### MerchantService
 
@@ -250,6 +291,13 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
 ```mermaid
 erDiagram
+    USER {
+        BIGINT id PK
+        VARCHAR name
+        VARCHAR email UK
+        VARCHAR password_hash
+    }
+
     MERCHANT {
         BIGINT id PK
         VARCHAR name
@@ -276,10 +324,40 @@ erDiagram
         TIMESTAMP created_at
     }
     
+    USER ||--|| WALLET : owns
     WALLET ||--o{ TRANSACTION : contains
 ```
 
 ### Entity Specifications
+
+#### User Entity
+
+```java
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String name;
+
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
+}
+```
+
+**Constraints**:
+- `id`: Primary key, auto-generated
+- `email`: Required, unique constraint enforced
+- `passwordHash`: Required, stored as BCrypt hash — never plaintext
 
 #### Merchant Entity
 
@@ -413,6 +491,38 @@ public enum TransactionStatus {
 ```
 
 ### DTO Specifications
+
+#### RegisterRequestDTO / LoginRequestDTO
+
+```java
+@Data public class RegisterRequestDTO {
+    private String name;
+    private String email;
+    private String password;
+}
+
+@Data public class LoginRequestDTO {
+    private String email;
+    private String password;
+}
+```
+
+#### AuthResponseDTO
+
+```java
+@Data @AllArgsConstructor
+public class AuthResponseDTO {
+    private String token;
+    private UserDTO user;
+}
+
+@Data @AllArgsConstructor
+public class UserDTO {
+    private Long id;
+    private String name;
+    private String email;
+}
+```
 
 #### MerchantDTO
 
@@ -732,6 +842,54 @@ After reflection, the following properties provide unique validation value:
 *For any* number of application startups, running seed data initialization should result in exactly the same set of seed records (3 merchants, 1 wallet, 2 transactions) without creating duplicates.
 
 **Validates: Requirements 10.4**
+
+### Property 35: Password Never Stored Plaintext
+
+*For any* registration request, the stored user record should contain a BCrypt hash, not the original plaintext password, and the hash should verify correctly against the original password.
+
+**Validates: Requirements 11.5**
+
+### Property 36: Duplicate Email Registration Rejected
+
+*For any* email address already present in the users table, a second registration attempt with that email should return HTTP status 400 without creating a new user record.
+
+**Validates: Requirements 11.3**
+
+### Property 37: JWT Claims Completeness
+
+*For any* successful registration or login, the returned JWT should decode to a payload containing userId, email, and name claims that match the registered user.
+
+**Validates: Requirements 13.3**
+
+### Property 38: JWT Expiry Enforced
+
+*For any* JWT whose `exp` claim is in the past, a request to a protected endpoint should return HTTP status 401.
+
+**Validates: Requirements 13.4**
+
+### Property 39: Invalid Credentials Return Generic Error
+
+*For any* login attempt with a non-existent email or a wrong password, the response should be HTTP status 400 with the same generic error message regardless of which field was wrong.
+
+**Validates: Requirements 12.3, 12.4**
+
+### Property 40: Wallet Auto-Created On Registration
+
+*For any* successful registration, exactly one wallet should exist for the new user's ID immediately after the request completes.
+
+**Validates: Requirements 11.4**
+
+### Property 41: Protected Endpoint Requires Valid JWT
+
+*For any* request to GET /api/v1/wallet/me without an Authorization header or with a malformed/expired token, the response should be HTTP status 401.
+
+**Validates: Requirements 14.1, 13.4**
+
+### Property 42: Authenticated Wallet Returns Own Data Only
+
+*For any* valid JWT, GET /api/v1/wallet/me should return the wallet belonging to the userId encoded in the token, never another user's wallet.
+
+**Validates: Requirements 14.2**
 
 ## Error Handling
 

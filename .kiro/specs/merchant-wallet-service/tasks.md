@@ -288,41 +288,110 @@ The implementation follows a bottom-up approach: entities first, then repositori
     - **Property 33: CORS Headers Present**
     - **Validates: Requirements 9.5**
 
-- [ ] 11. Final checkpoint - Ensure all tests pass
+- [-] 11. Implement JWT authentication
+
+  - [x] 11.1 Add auth dependencies to pom.xml
+    - Add `spring-boot-starter-security`, `jjwt-api`, `jjwt-impl`, `jjwt-jackson` (io.jsonwebtoken 0.12.x) to pom.xml
+    - Add `spring-security-test` in test scope
+    - _Requirements: 13.1_
+
+  - [x] 11.2 Create User entity
+    - Create `com.payback.api.entity.User` with fields: id (Long, PK), name (String, required), email (String, unique, required), passwordHash (String, required)
+    - Add JPA annotations: @Entity, @Table(name = "users"), unique constraint on email
+    - _Requirements: 11.5_
+
+  - [x] 11.3 Create UserRepository
+    - Create `com.payback.api.repository.UserRepository` extending JpaRepository<User, Long>
+    - Add `Optional<User> findByEmail(String email)`
+    - _Requirements: 11.3, 12.3_
+
+  - [x] 11.4 Create auth DTOs
+    - Create `RegisterRequestDTO` (name, email, password), `LoginRequestDTO` (email, password)
+    - Create `AuthResponseDTO` (token, UserDTO) and `UserDTO` (id, name, email)
+    - _Requirements: 11.1, 12.1_
+
+  - [x] 11.5 Create JwtService
+    - Create `com.payback.api.service.JwtService` that reads JWT_SECRET from environment
+    - Implement `generateToken(User user)`: sign HS256, embed userId/email/name claims, set 86400000 ms expiry
+    - Implement `validateToken(String token)`: return claims or throw on invalid/expired
+    - _Requirements: 13.1, 13.2, 13.3, 13.4_
+
+  - [x] 11.6 Create AuthService and AuthController
+    - Create `com.payback.api.service.AuthService` interface and `AuthServiceImpl`
+    - `register()`: check email uniqueness (400 if taken), BCrypt-hash password, save User, auto-create wallet via WalletService, return JWT + UserDTO with 201
+    - `login()`: look up user by email, verify BCrypt hash, return JWT + UserDTO with 200; return generic 400 on any failure
+    - Create `com.payback.api.controller.AuthController` with @RequestMapping("/api/v1/auth")
+    - Map POST /register → 201, POST /login → 200
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 12.1, 12.2, 12.3, 12.4_
+
+  - [x] 11.7 Create JWT filter and Spring Security config
+    - Create `JwtAuthenticationFilter` extending OncePerRequestFilter: extract Bearer token, validate, set SecurityContext
+    - Create `SecurityConfig` (@Configuration, @EnableWebSecurity):
+      - Permit all: POST /api/v1/auth/**, GET /api/v1/merchants/**, POST /api/v1/merchants/**/click, GET /api/v1/health, GET /api/v1/wallet/{userId}
+      - Require authentication: GET /api/v1/wallet/me
+      - Add JwtAuthenticationFilter before UsernamePasswordAuthenticationFilter
+      - Disable CSRF (stateless API), disable session creation
+    - _Requirements: 13.4, 14.1, 14.3, 15.1, 15.2, 15.3, 15.4, 15.5_
+
+  - [x] 11.8 Add GET /api/v1/wallet/me endpoint
+    - In WalletController, add GET /me endpoint
+    - Extract userId from SecurityContext (JWT claims), call walletService.getWalletByUserId(userId)
+    - Return 200 with WalletResponseDTO; 401 handled by security filter
+    - _Requirements: 14.1, 14.2_
+
+  - [ ]* 11.9 Write property tests for auth
+    - **Property 35: Password Never Stored Plaintext**
+    - **Property 36: Duplicate Email Registration Rejected**
+    - **Property 37: JWT Claims Completeness**
+    - **Property 38: JWT Expiry Enforced**
+    - **Property 39: Invalid Credentials Return Generic Error**
+    - **Property 40: Wallet Auto-Created On Registration**
+    - **Property 41: Protected Endpoint Requires Valid JWT**
+    - **Property 42: Authenticated Wallet Returns Own Data Only**
+    - _Requirements: 11.3, 11.4, 11.5, 12.3, 12.4, 13.3, 13.4, 14.1, 14.2_
+
+- [ ] 12. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. Integration verification and manual testing
-  - [ ] 12.1 Verify database schema creation
-    - Start application and verify three tables created: merchants, wallets, transactions
+- [ ] 13. Integration verification and manual testing
+  - [ ] 13.1 Verify database schema creation
+    - Start application and verify four tables created: users, merchants, wallets, transactions
     - Verify foreign key constraint from transactions to wallets
-    - Verify unique constraint on wallets.user_id
+    - Verify unique constraint on wallets.user_id and users.email
     - _Requirements: 8.3, 8.4, 8.5_
   
-  - [ ] 12.2 Verify seed data loaded correctly
+  - [ ] 13.2 Verify seed data loaded correctly
     - Query database to confirm 3 merchants exist
     - Query database to confirm 1 wallet exists for userId = 1
     - Query database to confirm 2 PENDING transactions exist
     - _Requirements: 10.1, 10.2, 10.3_
   
-  - [ ] 12.3 Test merchant listing endpoint
+  - [ ] 13.3 Test merchant listing endpoint
     - Call GET /api/v1/merchants and verify response contains 3 merchants
     - Verify merchants are sorted by clickCount
     - Verify JSON format matches MerchantDTO structure
     - _Requirements: 1.2, 1.5, 9.1_
   
-  - [ ] 12.4 Test click tracking endpoint
+  - [ ] 13.4 Test click tracking endpoint
     - Call POST /api/v1/merchants/1/click and verify 200 response
     - Call GET /api/v1/merchants and verify clickCount incremented
     - Call POST /api/v1/merchants/999/click and verify 404 response
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
   
-  - [ ] 12.5 Test wallet retrieval endpoint
+  - [ ] 13.5 Test wallet retrieval endpoint
     - Call GET /api/v1/wallet/1 and verify response contains wallet data
-    - Verify totalEarned = 327.50 (sum of both transactions)
-    - Verify pendingAmount = 327.50 (both transactions are PENDING)
-    - Verify availableBalance = 0.00 (no CONFIRMED transactions)
+    - Verify totalEarned = 327.50, pendingAmount = 327.50, availableBalance = 0.00
     - Verify transactions array contains 2 items ordered by createdAt desc
     - _Requirements: 6.1, 6.2, 6.3, 7.1, 7.2, 7.3, 7.4_
+
+  - [ ] 13.6 Test auth endpoints
+    - POST /api/v1/auth/register with new email → 201 + JWT
+    - POST /api/v1/auth/register with duplicate email → 400
+    - POST /api/v1/auth/login with valid credentials → 200 + JWT
+    - POST /api/v1/auth/login with wrong password → 400 (generic message)
+    - GET /api/v1/wallet/me with valid JWT → 200 + wallet data
+    - GET /api/v1/wallet/me without JWT → 401
+    - _Requirements: 11.1, 11.2, 11.3, 12.1, 12.2, 12.3, 14.1, 14.2_
 
 ## Notes
 
