@@ -1,8 +1,13 @@
 package com.payback.api.service.impl;
 
+import com.payback.api.dto.MerchantCategoryDTO;
 import com.payback.api.dto.MerchantDTO;
+import com.payback.api.dto.MerchantDetailDTO;
+import com.payback.api.dto.MerchantOfferDTO;
 import com.payback.api.entity.Merchant;
 import com.payback.api.exception.EntityNotFoundException;
+import com.payback.api.repository.MerchantCategoryRepository;
+import com.payback.api.repository.MerchantOfferRepository;
 import com.payback.api.repository.MerchantRepository;
 import com.payback.api.service.MerchantService;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +22,8 @@ import java.util.stream.Collectors;
 public class MerchantServiceImpl implements MerchantService {
     
     private final MerchantRepository merchantRepository;
+    private final MerchantCategoryRepository merchantCategoryRepository;
+    private final MerchantOfferRepository merchantOfferRepository;
     
     @Override
     public List<MerchantDTO> getAllMerchants() {
@@ -24,6 +31,30 @@ public class MerchantServiceImpl implements MerchantService {
                 .stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public MerchantDetailDTO getMerchantById(Long merchantId) {
+        Merchant merchant = merchantRepository.findById(merchantId)
+                .orElseThrow(() -> new EntityNotFoundException("Merchant with id " + merchantId + " not found"));
+
+        List<MerchantCategoryDTO> categories = merchantCategoryRepository
+                .findByMerchantIdOrderByDisplayOrderAsc(merchantId)
+                .stream()
+                .map(c -> new MerchantCategoryDTO(c.getId(), c.getName(), c.getIcon(),
+                        c.getAffiliateUrl(), c.getCashbackRate(), c.getDisplayOrder()))
+                .collect(Collectors.toList());
+
+        List<MerchantOfferDTO> offers = merchantOfferRepository
+                .findByMerchantIdAndIsActiveTrue(merchantId)
+                .stream()
+                .map(o -> new MerchantOfferDTO(o.getId(), o.getTitle(), o.getDescription(),
+                        o.getDiscountText(), o.getAffiliateUrl(), o.getIsActive()))
+                .collect(Collectors.toList());
+
+        return new MerchantDetailDTO(merchant.getId(), merchant.getName(), merchant.getLogoUrl(),
+                merchant.getCashbackRate(), merchant.getManualTrackingUrl(),
+                merchant.getClickCount(), categories, offers);
     }
     
     @Override

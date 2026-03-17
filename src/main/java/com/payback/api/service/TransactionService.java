@@ -16,6 +16,10 @@ public interface TransactionService {
     
     void updateTransactionStatus(Long transactionId, TransactionStatus newStatus);
     
+    TransactionDTO updateTransactionStatusAndReturn(Long transactionId, TransactionStatus newStatus);
+    
+    List<TransactionDTO> getTransactionsByUserId(Long userId);
+    
     List<TransactionDTO> getTransactionsByWallet(Long walletId);
     
     void initializeSeedData();

@@ -41,6 +41,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/wallet/{userId}").permitAll()
                 .requestMatchers("/api/v1/wallet/me").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/v1/transactions").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/v1/transactions/me").authenticated()
+                .requestMatchers(HttpMethod.PUT, "/api/v1/transactions/*/status").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

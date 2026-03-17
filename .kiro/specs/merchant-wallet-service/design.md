@@ -933,6 +933,314 @@ After reflection, the following properties provide unique validation value:
 
 **Validates: Requirements 16.8**
 
+---
+
+## Requirements 38–42: Merchant Detail, Categories, Offers & Transaction Enhancements
+
+### New REST Endpoints
+
+#### GET /api/v1/merchants/{id}
+- Description: Retrieve full merchant detail including categories and offers
+- Auth: Public (no JWT required)
+- Response: `200 OK`
+```json
+{
+  "id": 1,
+  "name": "Flipkart",
+  "logoUrl": "https://example.com/flipkart.png",
+  "cashbackRate": 10.0,
+  "manualTrackingUrl": "https://tracking.example.com/flipkart",
+  "clickCount": 150,
+  "categories": [
+    {
+      "id": 1,
+      "name": "Electronics",
+      "icon": "electronics-icon",
+      "affiliateUrl": "https://affiliate.example.com/electronics",
+      "cashbackRate": 10.0,
+      "displayOrder": 1
+    }
+  ],
+  "offers": [
+    {
+      "id": 1,
+      "title": "10% off on Electronics",
+      "description": "Get 10% cashback on all electronics",
+      "discountText": "10% OFF",
+      "affiliateUrl": "https://affiliate.example.com/offer1",
+      "isActive": true
+    }
+  ]
+}
+```
+- Error: `404 Not Found` if merchant does not exist
+
+#### GET /api/v1/transactions/me
+- Description: Retrieve all transactions for the authenticated user
+- Auth: Requires valid JWT (`Authorization: Bearer <token>`)
+- Response: `200 OK` — array of TransactionDTO
+- Error: `401 Unauthorized` if JWT missing or invalid
+
+#### PUT /api/v1/transactions/{id}/status
+- Description: Update the status of a transaction
+- Auth: Requires valid JWT
+- Request body: `{ "status": "CONFIRMED" | "REJECTED" | "PENDING" }`
+- Response: `200 OK` with updated TransactionDTO
+- Error: `404 Not Found` if transaction does not exist
+- Error: `401 Unauthorized` if JWT missing or invalid
+
+### New Entities
+
+#### MerchantCategory Entity
+
+Maps to the **existing** `merchant_categories` table. JPA must NOT recreate it.
+
+```java
+@Entity
+@Table(name = "merchant_categories")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class MerchantCategory {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "merchant_id", nullable = false)
+    private Merchant merchant;
+
+    @Column(nullable = false)
+    private String name;
+
+    private String icon;
+
+    @Column(name = "affiliate_url")
+    private String affiliateUrl;
+
+    @Column(name = "cashback_rate")
+    private Double cashbackRate;
+
+    @Column(name = "display_order")
+    private Integer displayOrder;
+}
+```
+
+#### MerchantOffer Entity
+
+Maps to the **existing** `merchant_offers` table. JPA must NOT recreate it.
+
+```java
+@Entity
+@Table(name = "merchant_offers")
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class MerchantOffer {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "merchant_id", nullable = false)
+    private Merchant merchant;
+
+    @Column(nullable = false)
+    private String title;
+
+    private String description;
+
+    @Column(name = "discount_text")
+    private String discountText;
+
+    @Column(name = "affiliate_url")
+    private String affiliateUrl;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+}
+```
+
+### New Repository Interfaces
+
+```java
+public interface MerchantCategoryRepository extends JpaRepository<MerchantCategory, Long> {
+    List<MerchantCategory> findByMerchantIdOrderByDisplayOrderAsc(Long merchantId);
+}
+
+public interface MerchantOfferRepository extends JpaRepository<MerchantOffer, Long> {
+    List<MerchantOffer> findByMerchantIdAndIsActiveTrue(Long merchantId);
+}
+```
+
+TransactionRepository gains two new methods:
+
+```java
+List<Transaction> findByWallet_UserIdOrderByCreatedAtDesc(Long userId);
+```
+
+### New DTOs
+
+#### MerchantCategoryDTO
+
+```java
+@Data @AllArgsConstructor @NoArgsConstructor
+public class MerchantCategoryDTO {
+    private Long id;
+    private String name;
+    private String icon;
+    private String affiliateUrl;
+    private Double cashbackRate;
+    private Integer displayOrder;
+}
+```
+
+#### MerchantOfferDTO
+
+```java
+@Data @AllArgsConstructor @NoArgsConstructor
+public class MerchantOfferDTO {
+    private Long id;
+    private String title;
+    private String description;
+    private String discountText;
+    private String affiliateUrl;
+    private Boolean isActive;
+}
+```
+
+#### MerchantDetailDTO
+
+Extends the existing merchant fields with categories and offers:
+
+```java
+@Data @AllArgsConstructor @NoArgsConstructor
+public class MerchantDetailDTO {
+    private Long id;
+    private String name;
+    private String logoUrl;
+    private Double cashbackRate;
+    private String manualTrackingUrl;
+    private Long clickCount;
+    private List<MerchantCategoryDTO> categories;
+    private List<MerchantOfferDTO> offers;
+}
+```
+
+#### UpdateTransactionStatusRequestDTO
+
+```java
+@Data
+public class UpdateTransactionStatusRequestDTO {
+    private TransactionStatus status;
+}
+```
+
+### Updated Service Interfaces
+
+#### MerchantService (additions)
+
+```java
+MerchantDetailDTO getMerchantById(Long merchantId);
+```
+
+#### TransactionService (additions)
+
+```java
+List<TransactionDTO> getTransactionsByUserId(Long userId);
+TransactionDTO updateTransactionStatus(Long transactionId, TransactionStatus newStatus);
+```
+
+### Updated ERD
+
+```mermaid
+erDiagram
+    MERCHANT ||--o{ MERCHANT_CATEGORY : has
+    MERCHANT ||--o{ MERCHANT_OFFER : has
+    MERCHANT_CATEGORY {
+        BIGINT id PK
+        BIGINT merchant_id FK
+        VARCHAR name
+        VARCHAR icon
+        VARCHAR affiliate_url
+        DOUBLE cashback_rate
+        INT display_order
+    }
+    MERCHANT_OFFER {
+        BIGINT id PK
+        BIGINT merchant_id FK
+        VARCHAR title
+        VARCHAR description
+        VARCHAR discount_text
+        VARCHAR affiliate_url
+        BOOLEAN is_active
+    }
+```
+
+### Correctness Properties (Requirements 38–42)
+
+#### Property 45: Merchant Detail Returns Categories and Offers
+
+*For any* existing merchant ID, GET /api/v1/merchants/{id} should return a response containing the merchant's categories ordered by displayOrder ascending and all active offers.
+
+**Validates: Requirements 38.1, 38.2, 38.3, 38.4**
+
+#### Property 46: Merchant Detail Not Found
+
+*For any* non-existent merchant ID, GET /api/v1/merchants/{id} should return HTTP status 404.
+
+**Validates: Requirement 38.5**
+
+#### Property 47: MerchantCategory Persistence Round-Trip
+
+*For any* MerchantCategory with valid fields, saving it and retrieving it should return identical field values.
+
+**Validates: Requirement 39.1, 39.2**
+
+#### Property 48: MerchantOffer Persistence Round-Trip
+
+*For any* MerchantOffer with valid fields, saving it and retrieving it should return identical field values.
+
+**Validates: Requirement 40.1, 40.2**
+
+#### Property 49: Category Display Order Sorting
+
+*For any* merchant with multiple categories, findByMerchantIdOrderByDisplayOrderAsc should return them in ascending displayOrder.
+
+**Validates: Requirement 39.3**
+
+#### Property 50: Active Offers Filter
+
+*For any* merchant with a mix of active and inactive offers, findByMerchantIdAndIsActiveTrue should return only offers where isActive = true.
+
+**Validates: Requirement 40.3**
+
+#### Property 51: Get My Transactions Returns Only Authenticated User's Transactions
+
+*For any* valid JWT, GET /api/v1/transactions/me should return only transactions belonging to the wallet of the userId encoded in the token.
+
+**Validates: Requirement 41.5**
+
+#### Property 52: Status Update to CONFIRMED Increases Wallet Balance
+
+*For any* PENDING transaction, updating its status to CONFIRMED should increase the wallet's totalBalance by exactly the transaction's cashbackAmount.
+
+**Validates: Requirement 42.3**
+
+#### Property 53: Status Update to REJECTED Preserves Wallet Balance
+
+*For any* PENDING transaction, updating its status to REJECTED should leave the wallet's totalBalance unchanged.
+
+**Validates: Requirement 42.4**
+
+#### Property 54: Transaction Status Update Not Found
+
+*For any* non-existent transaction ID, PUT /api/v1/transactions/{id}/status should return HTTP status 404.
+
+**Validates: Requirement 42.6**
+
+---
+
 ## Error Handling
 
 ### Error Categories

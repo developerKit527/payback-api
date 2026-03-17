@@ -225,3 +225,69 @@ This document defines the requirements for the Merchant & Wallet Service, the co
 7. IF the authenticated user has no wallet, THE API_Gateway SHALL return HTTP status 404
 8. IF the request is made without a valid JWT, THE API_Gateway SHALL return HTTP status 401
 9. THE POST /api/v1/transactions endpoint SHALL be added to the authenticated routes in the security configuration
+
+### Requirement 38: Merchant Detail Endpoint
+
+**User Story:** As a user, I want to see detailed information about a merchant including categories and offers, so that I can choose what to shop for.
+
+#### Acceptance Criteria
+
+1. THE API_Gateway SHALL expose GET /api/v1/merchants/{id} returning full merchant details
+2. THE response SHALL include: id, name, logoUrl, cashbackRate, manualTrackingUrl, clickCount, categories[], offers[]
+3. EACH category in the response SHALL include: id, name, icon, affiliateUrl, cashbackRate, displayOrder
+4. EACH offer in the response SHALL include: id, title, description, discountText, affiliateUrl, isActive
+5. IF the merchant is not found, THE API_Gateway SHALL return HTTP status 404
+6. THE endpoint SHALL be publicly accessible without a JWT token
+
+### Requirement 39: MerchantCategory Entity
+
+**User Story:** As a developer, I want merchant categories stored in the database, so that each merchant can have navigation categories with affiliate links.
+
+#### Acceptance Criteria
+
+1. THE MerchantCategory entity SHALL map to the existing `merchant_categories` table (already created in the database — JPA SHALL NOT recreate it)
+2. THE entity SHALL have fields: id (PK), merchant (FK to Merchant), name, icon, affiliateUrl, cashbackRate, displayOrder
+3. THE MerchantCategoryRepository SHALL provide: `findByMerchantIdOrderByDisplayOrderAsc(Long merchantId)`
+
+### Requirement 40: MerchantOffer Entity
+
+**User Story:** As a developer, I want merchant offers stored in the database, so that each merchant can display current deals.
+
+#### Acceptance Criteria
+
+1. THE MerchantOffer entity SHALL map to the existing `merchant_offers` table (already created in the database — JPA SHALL NOT recreate it)
+2. THE entity SHALL have fields: id (PK), merchant (FK to Merchant), title, description, discountText, affiliateUrl, isActive
+3. THE MerchantOfferRepository SHALL provide: `findByMerchantIdAndIsActiveTrue(Long merchantId)`
+
+### Requirement 41: Transaction Creation
+
+**User Story:** As a logged-in user, I want a transaction created when I shop through Payback, so that my cashback is tracked.
+
+#### Acceptance Criteria
+
+1. POST /api/v1/transactions SHALL require a valid JWT in the Authorization header
+2. THE request body SHALL accept: merchantId (Long), orderAmount (BigDecimal)
+3. THE Transaction_Engine SHALL calculate cashbackAmount = orderAmount × (merchant.cashbackRate / 100)
+4. THE Transaction_Engine SHALL create a transaction with status PENDING linked to the authenticated user's wallet and return HTTP status 201 with the created transaction
+5. GET /api/v1/transactions/me SHALL require a valid JWT and return all transactions for the authenticated user
+
+### Requirement 42: Transaction Status Management
+
+**User Story:** As an admin, I want to update transaction status, so that I can confirm or reject cashback when the affiliate network reports back.
+
+#### Acceptance Criteria
+
+1. PUT /api/v1/transactions/{id}/status SHALL require a valid JWT
+2. THE request body SHALL accept: `{ "status": "CONFIRMED" | "REJECTED" | "PENDING" }`
+3. WHEN status changes to CONFIRMED, THE Wallet_Service SHALL increase the wallet's totalBalance by the transaction's cashbackAmount
+4. WHEN status changes to REJECTED, THE Wallet_Service SHALL NOT change the wallet's totalBalance
+5. THE API_Gateway SHALL return the updated transaction
+6. IF the transaction is not found, THE API_Gateway SHALL return HTTP status 404
+
+### Constraints (Requirements 38–42)
+
+- DO NOT change existing entities: Merchant, Wallet, Transaction, User
+- DO NOT change SeedDataLoader
+- DO NOT change existing endpoints
+- `merchant_categories` and `merchant_offers` tables already exist in PostgreSQL — JPA SHALL map to them using `ddl-auto=update`, NOT recreate them
+- MerchantCategory and MerchantOffer are new JPA entities mapping to existing tables

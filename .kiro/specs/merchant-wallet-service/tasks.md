@@ -429,6 +429,119 @@ The implementation follows a bottom-up approach: entities first, then repositori
     - Verify transaction appears in GET /api/v1/wallet/me response
     - _Requirements: 16.1, 16.5, 16.6, 16.7, 16.8_
 
+- [ ] 17. Implement MerchantCategory and MerchantOffer entities (Req 39, 40)
+  - [ ] 17.1 Create MerchantCategory entity
+    - Create `com.payback.api.entity.MerchantCategory` with @Entity, @Table(name = "merchant_categories")
+    - Fields: id (Long, PK), merchant (@ManyToOne FK to Merchant), name (String, required), icon (String), affiliateUrl (String), cashbackRate (Double), displayOrder (Integer)
+    - Add Lombok @Data, @NoArgsConstructor, @AllArgsConstructor
+    - _Requirements: 39.1, 39.2_
+
+  - [ ] 17.2 Create MerchantOffer entity
+    - Create `com.payback.api.entity.MerchantOffer` with @Entity, @Table(name = "merchant_offers")
+    - Fields: id (Long, PK), merchant (@ManyToOne FK to Merchant), title (String, required), description (String), discountText (String), affiliateUrl (String), isActive (Boolean, default true)
+    - Add Lombok @Data, @NoArgsConstructor, @AllArgsConstructor
+    - _Requirements: 40.1, 40.2_
+
+  - [ ] 17.3 Create MerchantCategoryRepository
+    - Create `com.payback.api.repository.MerchantCategoryRepository` extending JpaRepository<MerchantCategory, Long>
+    - Add: `List<MerchantCategory> findByMerchantIdOrderByDisplayOrderAsc(Long merchantId)`
+    - _Requirements: 39.3_
+
+  - [ ] 17.4 Create MerchantOfferRepository
+    - Create `com.payback.api.repository.MerchantOfferRepository` extending JpaRepository<MerchantOffer, Long>
+    - Add: `List<MerchantOffer> findByMerchantIdAndIsActiveTrue(Long merchantId)`
+    - _Requirements: 40.3_
+
+  - [ ]* 17.5 Write property tests for MerchantCategory and MerchantOffer
+    - **Property 47: MerchantCategory Persistence Round-Trip**
+    - **Property 48: MerchantOffer Persistence Round-Trip**
+    - **Property 49: Category Display Order Sorting**
+    - **Property 50: Active Offers Filter**
+    - _Requirements: 39.1, 39.2, 39.3, 40.1, 40.2, 40.3_
+
+- [ ] 18. Implement Merchant Detail endpoint (Req 38)
+  - [ ] 18.1 Create MerchantCategoryDTO, MerchantOfferDTO, MerchantDetailDTO
+    - Create `com.payback.api.dto.MerchantCategoryDTO` with fields: id, name, icon, affiliateUrl, cashbackRate, displayOrder
+    - Create `com.payback.api.dto.MerchantOfferDTO` with fields: id, title, description, discountText, affiliateUrl, isActive
+    - Create `com.payback.api.dto.MerchantDetailDTO` with fields: id, name, logoUrl, cashbackRate, manualTrackingUrl, clickCount, categories (List<MerchantCategoryDTO>), offers (List<MerchantOfferDTO>)
+    - Add Lombok annotations to all three
+    - _Requirements: 38.2, 38.3, 38.4_
+
+  - [ ] 18.2 Add getMerchantById() to MerchantService
+    - Add `MerchantDetailDTO getMerchantById(Long merchantId)` to MerchantService interface
+    - Implement in MerchantServiceImpl:
+      - Fetch Merchant by id (throw EntityNotFoundException if not found)
+      - Fetch categories via MerchantCategoryRepository.findByMerchantIdOrderByDisplayOrderAsc()
+      - Fetch offers via MerchantOfferRepository.findByMerchantIdAndIsActiveTrue()
+      - Map to MerchantDetailDTO and return
+    - _Requirements: 38.1, 38.2, 38.3, 38.4, 38.5_
+
+  - [ ] 18.3 Add GET /api/v1/merchants/{id} to MerchantController
+    - Add endpoint in MerchantController: `GET /{id}` → call merchantService.getMerchantById(id), return 200 with MerchantDetailDTO
+    - EntityNotFoundException is handled by GlobalExceptionHandler → 404
+    - _Requirements: 38.1, 38.5, 38.6_
+
+  - [ ] 18.4 Ensure GET /api/v1/merchants/{id} is public in SecurityConfig
+    - Add `GET /api/v1/merchants/**` to the permit-all list if not already covered
+    - _Requirements: 38.6_
+
+  - [ ]* 18.5 Write property tests for merchant detail endpoint
+    - **Property 45: Merchant Detail Returns Categories and Offers**
+    - **Property 46: Merchant Detail Not Found**
+    - _Requirements: 38.1, 38.5_
+
+- [ ] 19. Implement GET /api/v1/transactions/me and PUT /api/v1/transactions/{id}/status (Req 41, 42)
+  - [ ] 19.1 Add getTransactionsByUserId() to TransactionService
+    - Add `List<TransactionDTO> getTransactionsByUserId(Long userId)` to TransactionService interface
+    - Implement in TransactionServiceImpl:
+      - Fetch wallet by userId (throw EntityNotFoundException if not found)
+      - Return transactions ordered by createdAt desc mapped to TransactionDTO
+    - _Requirements: 41.5_
+
+  - [ ] 19.2 Add updateTransactionStatus() to TransactionService
+    - Add `TransactionDTO updateTransactionStatus(Long transactionId, TransactionStatus newStatus)` to TransactionService interface
+    - Implement in TransactionServiceImpl:
+      - Fetch transaction by id (throw EntityNotFoundException if not found)
+      - If newStatus == CONFIRMED: add cashbackAmount to wallet.totalBalance and save wallet
+      - If newStatus == REJECTED: do not modify wallet balance
+      - Update transaction status, save, return TransactionDTO
+    - _Requirements: 42.1, 42.3, 42.4, 42.5, 42.6_
+
+  - [ ] 19.3 Create UpdateTransactionStatusRequestDTO
+    - Create `com.payback.api.dto.UpdateTransactionStatusRequestDTO` with field: status (TransactionStatus)
+    - Add Lombok @Data
+    - _Requirements: 42.2_
+
+  - [ ] 19.4 Add endpoints to TransactionController
+    - Add `GET /me` endpoint: extract userId from Authentication, call transactionService.getTransactionsByUserId(userId), return 200
+    - Add `PUT /{id}/status` endpoint: call transactionService.updateTransactionStatus(id, request.getStatus()), return 200 with updated TransactionDTO
+    - _Requirements: 41.5, 42.1, 42.5_
+
+  - [ ] 19.5 Update SecurityConfig for new transaction endpoints
+    - Ensure `GET /api/v1/transactions/me` requires authentication
+    - Ensure `PUT /api/v1/transactions/{id}/status` requires authentication
+    - _Requirements: 41.1, 42.1_
+
+  - [ ]* 19.6 Write property tests for transaction endpoints
+    - **Property 51: Get My Transactions Returns Only Authenticated User's Transactions**
+    - **Property 52: Status Update to CONFIRMED Increases Wallet Balance**
+    - **Property 53: Status Update to REJECTED Preserves Wallet Balance**
+    - **Property 54: Transaction Status Update Not Found**
+    - _Requirements: 41.5, 42.3, 42.4, 42.6_
+
+- [ ] 20. Integration verification for Requirements 38–42
+  - [ ] 20.1 Test GET /api/v1/merchants/{id}
+    - Call with valid merchant id → 200 with categories and offers arrays
+    - Call with non-existent id → 404
+  - [ ] 20.2 Test GET /api/v1/transactions/me
+    - Call with valid JWT → 200 with user's transactions only
+    - Call without JWT → 401
+  - [ ] 20.3 Test PUT /api/v1/transactions/{id}/status
+    - Update to CONFIRMED → wallet balance increases by cashbackAmount
+    - Update to REJECTED → wallet balance unchanged
+    - Non-existent transaction id → 404
+    - Without JWT → 401
+
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for faster MVP delivery

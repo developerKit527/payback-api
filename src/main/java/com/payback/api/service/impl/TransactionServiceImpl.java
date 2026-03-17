@@ -85,6 +85,34 @@ public class TransactionServiceImpl implements TransactionService {
             walletRepository.save(wallet);
         }
     }
+
+    @Override
+    @Transactional
+    public TransactionDTO updateTransactionStatusAndReturn(Long transactionId, TransactionStatus newStatus) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new EntityNotFoundException("Transaction with id " + transactionId + " not found"));
+
+        TransactionStatus oldStatus = transaction.getStatus();
+        transaction.setStatus(newStatus);
+        Transaction saved = transactionRepository.save(transaction);
+
+        if (newStatus == TransactionStatus.CONFIRMED && oldStatus != TransactionStatus.CONFIRMED) {
+            Wallet wallet = saved.getWallet();
+            wallet.setTotalBalance(wallet.getTotalBalance().add(saved.getCashbackAmount()));
+            walletRepository.save(wallet);
+        }
+        return convertToDTO(saved);
+    }
+
+    @Override
+    public List<TransactionDTO> getTransactionsByUserId(Long userId) {
+        Wallet wallet = walletRepository.findByUserId(userId)
+                .orElseThrow(() -> new EntityNotFoundException("Wallet not found for user " + userId));
+        return transactionRepository.findByWalletOrderByCreatedAtDesc(wallet)
+                .stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
     
     @Override
     public List<TransactionDTO> getTransactionsByWallet(Long walletId) {
