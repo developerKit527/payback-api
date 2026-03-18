@@ -1,6 +1,7 @@
 package com.payback.api.controller;
 
 import com.payback.api.dto.MerchantDTO;
+import com.payback.api.dto.MerchantDetailDTO;
 import com.payback.api.service.MerchantService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,11 @@ public class MerchantController {
     public ResponseEntity<List<MerchantDTO>> getAllMerchants() {
         List<MerchantDTO> merchants = merchantService.getAllMerchants();
         return ResponseEntity.ok(merchants);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<MerchantDetailDTO> getMerchantById(@PathVariable Long id) {
+        return ResponseEntity.ok(merchantService.getMerchantById(id));
     }
 
     @GetMapping("/{id}/click")
