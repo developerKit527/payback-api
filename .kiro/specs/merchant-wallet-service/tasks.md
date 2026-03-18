@@ -219,6 +219,20 @@ The implementation follows a bottom-up approach: entities first, then repositori
     - Add @ExceptionHandler for IllegalArgumentException: return 400 with ErrorResponse
     - Add @ExceptionHandler for Exception: return 500 with ErrorResponse
     - _Requirements: 9.2_
+
+  - [x] 8.5 Harden generic exception handler (Requirement 43)
+    - In `GlobalExceptionHandler`, update the generic `@ExceptionHandler(Exception.class)` handler:
+      - Log the full exception server-side using a logger (e.g., `log.error("Unexpected error", ex)`) so it is available for debugging
+      - Return exactly `{"error": "INTERNAL_SERVER_ERROR", "message": "An unexpected error occurred"}` — no exception class name, no stack trace, no internal message
+    - Verify the `ErrorResponse` DTO supports the `INTERNAL_SERVER_ERROR` error string
+    - _Requirements: 43.1, 43.2, 43.3, 43.4_
+
+  - [ ]* 8.6 Write property test for exception handler security
+    - **Property 55: Generic Exception Handler Hides Internal Details**
+    - Trigger a handler that throws a raw `RuntimeException` with a sensitive message
+    - Assert response body equals `{"error":"INTERNAL_SERVER_ERROR","message":"An unexpected error occurred"}`
+    - Assert response body does NOT contain the exception class name or the sensitive message
+    - **Validates: Requirements 43.1, 43.2, 43.4**
   
   - [ ]* 8.3 Write property tests for error handling
     - **Property 30: Error Response Status Codes**

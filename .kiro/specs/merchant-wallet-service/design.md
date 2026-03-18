@@ -1239,6 +1239,12 @@ erDiagram
 
 **Validates: Requirement 42.6**
 
+#### Property 55: Generic Exception Handler Hides Internal Details
+
+*For any* unhandled exception caught by the generic `Exception` handler, the API response body MUST be exactly `{"error": "INTERNAL_SERVER_ERROR", "message": "An unexpected error occurred"}` and MUST NOT contain the exception class name, stack trace, or any internal error message.
+
+**Validates: Requirements 43.1, 43.2, 43.4**
+
 ---
 
 ## Error Handling
@@ -1260,7 +1266,9 @@ erDiagram
 - **500 Internal Server Error**: Unexpected system failures
   - Thrown when: Database connection failures
   - Thrown when: Unexpected runtime exceptions
-  - Response: `{"error": "Internal server error", "message": "An unexpected error occurred"}`
+  - Response: `{"error": "INTERNAL_SERVER_ERROR", "message": "An unexpected error occurred"}`
+  - The response MUST NOT include exception class names, stack traces, or internal error messages (Requirement 43.1)
+  - The full exception MUST be logged server-side for debugging (Requirement 43.3)
 
 ### Exception Handling Strategy
 
@@ -1283,8 +1291,11 @@ public class GlobalExceptionHandler {
     
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneral(Exception ex) {
+        // Log full exception details server-side for debugging (Requirement 43.3)
+        log.error("Unexpected error", ex);
+        // Never expose exception class names, stack traces, or internal messages (Requirement 43.1)
         return ResponseEntity.status(500)
-            .body(new ErrorResponse("Internal server error", "An unexpected error occurred"));
+            .body(new ErrorResponse("INTERNAL_SERVER_ERROR", "An unexpected error occurred"));
     }
 }
 ```

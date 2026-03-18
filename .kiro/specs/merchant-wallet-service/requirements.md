@@ -291,3 +291,14 @@ This document defines the requirements for the Merchant & Wallet Service, the co
 - DO NOT change existing endpoints
 - `merchant_categories` and `merchant_offers` tables already exist in PostgreSQL — JPA SHALL map to them using `ddl-auto=update`, NOT recreate them
 - MerchantCategory and MerchantOffer are new JPA entities mapping to existing tables
+
+### Requirement 43: Exception Handler Security
+
+**User Story:** As a platform operator, I want error responses to hide internal exception details, so that sensitive system information is not exposed to users.
+
+#### Acceptance Criteria
+
+1. THE GlobalExceptionHandler SHALL NOT include exception class names, stack traces, or internal error messages in API responses
+2. THE generic exception handler SHALL always return: `{"error": "INTERNAL_SERVER_ERROR", "message": "An unexpected error occurred"}`
+3. Internal exceptions SHALL still be logged server-side for debugging
+4. This applies to ALL unhandled exceptions caught by the generic Exception handler
