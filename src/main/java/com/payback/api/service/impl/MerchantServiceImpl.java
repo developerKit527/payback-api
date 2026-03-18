@@ -34,6 +34,7 @@ public class MerchantServiceImpl implements MerchantService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public MerchantDetailDTO getMerchantById(Long merchantId) {
         Merchant merchant = merchantRepository.findById(merchantId)
                 .orElseThrow(() -> new EntityNotFoundException("Merchant with id " + merchantId + " not found"));
