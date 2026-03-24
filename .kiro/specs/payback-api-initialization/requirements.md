@@ -14,6 +14,7 @@ This document defines the requirements for initializing a Spring Boot REST API p
 - **POM**: Project Object Model file that defines Maven project configuration
 - **Docker_Compose**: The tool for defining and running multi-container Docker applications
 - **Database_Container**: The Docker container running the PostgreSQL_Database instance
+- **JWT_Token**: JSON Web Token used for authenticating API requests with configurable expiration time
 
 ## Requirements
 
@@ -104,3 +105,16 @@ This document defines the requirements for initializing a Spring Boot REST API p
 6. THE Database_Container SHALL configure POSTGRES_USER environment variable as admin
 7. THE Database_Container SHALL configure POSTGRES_PASSWORD environment variable as password123
 8. THE Docker_Compose configuration SHALL define a named volume postgres_data for data persistence
+
+### Requirement 8: Extend JWT Token Lifetime
+
+**User Story:** As a user, I want my session to last for 7 days instead of 24 hours, so that I don't have to log in repeatedly during normal usage.
+
+#### Acceptance Criteria
+
+1. THE Payback_API SHALL set JWT_Token expiration to 604800000 milliseconds (7 days) in Application_Properties
+2. THE Payback_API SHALL use the configuration property jwt.expiration with default value ${JWT_EXPIRATION:604800000}
+3. WHEN a user authenticates successfully, THE Payback_API SHALL issue a JWT_Token with 7-day expiration
+4. THE Payback_API SHALL read the expiration value from Application_Properties configuration
+5. THE Payback_API SHALL continue to validate JWT_Token signatures and claims as before
+6. THE Payback_API SHALL continue to reject invalid or malformed JWT_Tokens with 401 errors
