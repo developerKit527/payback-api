@@ -21,13 +21,20 @@ The system follows a standard Spring Boot architecture with Maven for dependency
 
 1. **Controller Layer**: REST endpoints for API access
    - HealthController: Provides health check functionality
+   - UserController: Handles user profile management
 
-2. **Configuration Layer**: Application properties and environment configuration
+2. **Service Layer**: Business logic and data processing
+   - UserService: User profile update operations
+
+3. **Repository Layer**: Data access and persistence
+   - UserRepository: User entity database operations
+
+4. **Configuration Layer**: Application properties and environment configuration
    - Database connection settings
    - Server configuration
    - JWT token settings
 
-3. **Infrastructure Layer**: External dependencies
+5. **Infrastructure Layer**: External dependencies
    - PostgreSQL database via Docker
    - Spring Boot embedded server
 
@@ -42,8 +49,18 @@ payback-api/
 │   │   │       └── payback/
 │   │   │           └── api/
 │   │   │               ├── PaybackApplication.java
-│   │   │               └── controller/
-│   │   │                   └── HealthController.java
+│   │   │               ├── controller/
+│   │   │               │   ├── HealthController.java
+│   │   │               │   └── UserController.java
+│   │   │               ├── service/
+│   │   │               │   └── UserService.java
+│   │   │               ├── repository/
+│   │   │               │   └── UserRepository.java
+│   │   │               ├── entity/
+│   │   │               │   └── User.java
+│   │   │               └── dto/
+│   │   │                   ├── UpdateUserRequestDTO.java
+│   │   │                   └── UserDTO.java
 │   │   └── resources/
 │   │       └── application.properties
 ├── docker-compose.yml
@@ -214,6 +231,104 @@ The configuration supports environment-based override for different deployment e
 - Production: Can override via `JWT_EXPIRATION` environment variable if different policy needed
 - Testing: Can set shorter expiration for faster test cycles
 
+### 7. User Profile Management Endpoint
+
+**Purpose**: Allow authenticated users to update their display name through a REST API endpoint
+
+**Endpoint**: `PUT /api/v1/users/me`
+
+**Authentication**: Requires valid JWT token in Authorization header
+
+**Request**:
+```json
+{
+  "name": "John Doe"
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "id": 1,
+  "name": "John Doe",
+  "email": "john@example.com"
+}
+```
+
+**Error Responses**:
+- 401 Unauthorized: Missing or invalid JWT token
+- 400 Bad Request: Invalid name (empty or exceeds 100 characters)
+
+**Implementation Approach**:
+
+**Controller Layer** (`UserController.java`):
+- Class location: `com.payback.api.controller.UserController`
+- Annotation: `@RestController`
+- Base mapping: `/api/v1`
+- New endpoint: `@PutMapping("/users/me")`
+- Extract user ID from JWT token using `@AuthenticationPrincipal` or custom JWT filter
+- Validate request body using `@Valid` annotation
+- Call service layer to update user
+- Return updated user DTO
+
+**Service Layer** (`UserService.java`):
+- Class location: `com.payback.api.service.UserService`
+- Annotation: `@Service`
+- Method: `updateUserProfile(Long userId, String name)`
+- Fetch user from repository by ID
+- Update user's name field
+- Save updated user to database
+- Return updated user entity
+
+**Repository Layer** (`UserRepository.java`):
+- Interface location: `com.payback.api.repository.UserRepository`
+- Extends: `JpaRepository<User, Long>`
+- Provides standard CRUD operations for User entity
+
+**DTO Layer**:
+
+`UpdateUserRequestDTO.java`:
+```java
+public class UpdateUserRequestDTO {
+    @NotBlank(message = "Name cannot be empty")
+    @Size(max = 100, message = "Name cannot exceed 100 characters")
+    private String name;
+    
+    // Getters and setters
+}
+```
+
+`UserDTO.java`:
+```java
+public class UserDTO {
+    private Long id;
+    private String name;
+    private String email;
+    
+    // Getters and setters
+}
+```
+
+**Entity Layer** (`User.java`):
+- Class location: `com.payback.api.entity.User`
+- Annotation: `@Entity`, `@Table(name = "users")`
+- Fields:
+  - `@Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id`
+  - `@Column(nullable = false, length = 100) private String name`
+  - `@Column(nullable = false, unique = true) private String email`
+
+**Security Considerations**:
+- JWT token validation ensures only authenticated users can update their profile
+- User can only update their own profile (user ID extracted from JWT)
+- Email cannot be updated through this endpoint (security constraint)
+- Name validation prevents empty strings and excessively long names
+- Authorization header format: `Bearer <jwt_token>`
+
+**Database Impact**:
+- Updates the `name` column in the `users` table
+- No schema changes required (name field already exists)
+- Transaction management handled by Spring's `@Transactional` annotation
+
 ## Data Models
 
 ### Health Response Model
@@ -232,6 +347,68 @@ The configuration supports environment-based override for different deployment e
 
 **Usage**: Returned by GET /api/v1/health endpoint
 
+### User Entity Model
+
+**Database Table**: `users`
+
+**Structure**:
+```java
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, length = 100)
+    private String name;
+    
+    @Column(nullable = false, unique = true)
+    private String email;
+}
+```
+
+**Field Specifications**:
+- `id`: Primary key, auto-generated
+- `name`: User's display name, max 100 characters, not null
+- `email`: User's email address, unique, not null
+
+### Update User Request Model
+
+**Structure**:
+```json
+{
+  "name": "string"
+}
+```
+
+**Field Specifications**:
+- `name`: New display name (required, 1-100 characters)
+
+**Validation Rules**:
+- Name cannot be empty or whitespace only
+- Name cannot exceed 100 characters
+
+**Usage**: Request body for PUT /api/v1/users/me endpoint
+
+### User Profile Response Model
+
+**Structure**:
+```json
+{
+  "id": "number",
+  "name": "string",
+  "email": "string"
+}
+```
+
+**Field Specifications**:
+- `id`: User's unique identifier
+- `name`: User's display name
+- `email`: User's email address
+
+**Usage**: Response body for PUT /api/v1/users/me endpoint
+
 ## Correctness Properties
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
@@ -247,6 +424,24 @@ The configuration supports environment-based override for different deployment e
 *For any* invalid or malformed JWT token, the API SHALL reject the request and return HTTP status 401 (Unauthorized).
 
 **Validates: Requirements 8.6**
+
+### Property 3: User Profile Update Round-Trip
+
+*For any* valid display name (non-empty, 1-100 characters) and authenticated user, when the user updates their profile with that name, the API SHALL return HTTP status 200 with a response containing the user's id, the updated name, and email, and the database SHALL contain the updated name.
+
+**Validates: Requirements 9.3, 9.4, 9.5, 9.9**
+
+### Property 4: Invalid Display Name Rejection
+
+*For any* invalid display name (empty, whitespace-only, or exceeding 100 characters), when an authenticated user attempts to update their profile, the API SHALL return HTTP status 400 with an error message.
+
+**Validates: Requirements 9.8**
+
+### Property 5: Unauthenticated Profile Update Rejection
+
+*For any* profile update request without a valid JWT token (missing, expired, or malformed), the API SHALL return HTTP status 401 (Unauthorized).
+
+**Validates: Requirements 9.7**
 
 ## Error Handling
 
@@ -273,6 +468,15 @@ The configuration supports environment-based override for different deployment e
 - Invalid signature: Return 401 with appropriate error message
 - Malformed tokens: Return 401 with appropriate error message
 
+**User Profile Update Errors**:
+- **Missing JWT Token**: Return 401 Unauthorized with message "Authentication required"
+- **Invalid JWT Token**: Return 401 Unauthorized with message "Invalid or expired token"
+- **Empty Display Name**: Return 400 Bad Request with message "Name cannot be empty"
+- **Display Name Too Long**: Return 400 Bad Request with message "Name cannot exceed 100 characters"
+- **Whitespace-Only Name**: Return 400 Bad Request with message "Name cannot be empty"
+- **User Not Found**: Return 404 Not Found with message "User not found" (edge case if JWT references non-existent user)
+- **Database Error**: Return 500 Internal Server Error with generic message, log detailed error
+
 ## Testing Strategy
 
 ### Unit Testing
@@ -291,6 +495,20 @@ Unit tests will focus on specific examples and edge cases:
 - Test default value of 604800000ms is used when environment variable not set
 - Test environment variable override works correctly
 
+**User Controller Tests**:
+- Test PUT /api/v1/users/me endpoint exists and accepts PUT requests
+- Test endpoint accepts JSON request body with "name" field
+- Test endpoint requires Authorization header with JWT token
+- Test specific example: updating name to "John Doe" returns updated profile
+- Test edge case: empty string name returns 400
+- Test edge case: 100-character name is accepted
+- Test edge case: 101-character name returns 400
+
+**User Service Tests**:
+- Test updateUserProfile method updates user name in database
+- Test updateUserProfile method returns updated user entity
+- Test updateUserProfile throws exception when user not found
+
 ### Integration Testing
 
 Integration tests will verify component interactions:
@@ -304,6 +522,13 @@ Integration tests will verify component interactions:
 - Test health endpoint is accessible at /api/v1/health
 - Test health endpoint with database running
 - Test health endpoint response format
+
+**End-to-End User Profile Update**:
+- Test authenticated user can update their profile
+- Test profile update persists to database
+- Test profile update returns correct response structure
+- Test unauthenticated request is rejected
+- Test invalid name validation works end-to-end
 
 ### Property-Based Testing
 
@@ -335,6 +560,76 @@ void invalidTokensAreRejected(@ForAll /* invalid token variations */) {
     // Generate random invalid/malformed token
     // Make API request with invalid token
     // Assert: response status == 401
+}
+```
+
+**Property Test 3: User Profile Update Round-Trip**
+```java
+// Feature: payback-api-initialization, Property 3: For any valid display name and authenticated user,
+// when the user updates their profile, the API SHALL return 200 with updated profile and database SHALL contain the updated name
+@Property
+void userProfileUpdateRoundTrip(@ForAll("validDisplayNames") String name, @ForAll User user) {
+    // Generate random valid display name (1-100 chars, non-empty)
+    // Generate random authenticated user with valid JWT
+    // Update user profile with name
+    // Assert: response status == 200
+    // Assert: response contains id, updated name, and email
+    // Assert: database query returns user with updated name
+}
+
+@Provide
+Arbitrary<String> validDisplayNames() {
+    return Arbitraries.strings()
+        .alpha().numeric().whitespace()
+        .ofMinLength(1)
+        .ofMaxLength(100)
+        .filter(s -> !s.trim().isEmpty());
+}
+```
+
+**Property Test 4: Invalid Display Name Rejection**
+```java
+// Feature: payback-api-initialization, Property 4: For any invalid display name,
+// the API SHALL return HTTP status 400 with an error message
+@Property
+void invalidDisplayNamesAreRejected(@ForAll("invalidDisplayNames") String name, @ForAll User user) {
+    // Generate random invalid display name (empty, whitespace-only, or >100 chars)
+    // Generate random authenticated user with valid JWT
+    // Attempt to update user profile with invalid name
+    // Assert: response status == 400
+    // Assert: response contains error message
+}
+
+@Provide
+Arbitrary<String> invalidDisplayNames() {
+    return Arbitraries.oneOf(
+        Arbitraries.just(""),  // empty string
+        Arbitraries.strings().whitespace().ofMinLength(1).ofMaxLength(10),  // whitespace only
+        Arbitraries.strings().ofMinLength(101).ofMaxLength(200)  // too long
+    );
+}
+```
+
+**Property Test 5: Unauthenticated Profile Update Rejection**
+```java
+// Feature: payback-api-initialization, Property 5: For any profile update request without valid JWT token,
+// the API SHALL return HTTP status 401
+@Property
+void unauthenticatedRequestsAreRejected(@ForAll("invalidTokens") String token, @ForAll String name) {
+    // Generate random invalid/missing/expired token
+    // Generate random display name
+    // Attempt to update profile with invalid token
+    // Assert: response status == 401
+}
+
+@Provide
+Arbitrary<String> invalidTokens() {
+    return Arbitraries.oneOf(
+        Arbitraries.just(""),  // missing token
+        Arbitraries.just("invalid.token.format"),  // malformed
+        Arbitraries.strings().alpha().numeric().ofLength(50),  // random string
+        // expired tokens would be generated by creating tokens with past expiration
+    );
 }
 ```
 

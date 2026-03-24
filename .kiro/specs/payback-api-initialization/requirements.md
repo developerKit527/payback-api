@@ -15,6 +15,8 @@ This document defines the requirements for initializing a Spring Boot REST API p
 - **Docker_Compose**: The tool for defining and running multi-container Docker applications
 - **Database_Container**: The Docker container running the PostgreSQL_Database instance
 - **JWT_Token**: JSON Web Token used for authenticating API requests with configurable expiration time
+- **Display_Name**: The user's customizable name stored in the database name field
+- **User_Profile**: The user's account information including id, name, and email
 
 ## Requirements
 
@@ -118,3 +120,19 @@ This document defines the requirements for initializing a Spring Boot REST API p
 4. THE Payback_API SHALL read the expiration value from Application_Properties configuration
 5. THE Payback_API SHALL continue to validate JWT_Token signatures and claims as before
 6. THE Payback_API SHALL continue to reject invalid or malformed JWT_Tokens with 401 errors
+
+### Requirement 9: User Profile Management
+
+**User Story:** As a user, I want to update my display name through the API, so that I can personalize how my name appears in the application.
+
+#### Acceptance Criteria
+
+1. THE Payback_API SHALL provide a PUT endpoint at /api/v1/users/me for updating the authenticated user's profile
+2. THE Payback_API SHALL accept a JSON request body containing the updated Display_Name
+3. THE Payback_API SHALL validate that the Display_Name is not empty and does not exceed 100 characters
+4. WHEN a valid Display_Name update request is received, THE Payback_API SHALL update the user's name in the PostgreSQL_Database
+5. WHEN the update succeeds, THE Payback_API SHALL return HTTP status 200 with the updated User_Profile
+6. THE Payback_API SHALL require a valid JWT_Token for authentication
+7. WHEN an unauthenticated request is made, THE Payback_API SHALL return HTTP status 401
+8. WHEN an invalid Display_Name is provided, THE Payback_API SHALL return HTTP status 400 with an error message
+9. THE Payback_API SHALL return the updated User_Profile including id, name, and email

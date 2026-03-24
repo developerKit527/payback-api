@@ -112,12 +112,78 @@ This plan implements a Spring Boot 3.2 REST API with PostgreSQL database integra
   - Verify JWT configuration is loaded correctly
   - Ensure all tests pass, ask the user if questions arise
 
+- [ ] 8. Implement User Profile Management (Requirement 9)
+  - [ ] 8.1 Create DTOs for user profile management
+    - Create UpdateUserRequestDTO.java with name field and validation annotations
+    - Ensure UserDTO.java exists with id, name, and email fields
+    - Add validation: @NotBlank for name, @Size(max = 100) for name length
+    - _Requirements: 9.2, 9.3_
+
+  - [ ] 8.2 Create UserController with profile update endpoint
+    - Create UserController.java in controller package
+    - Add @RestController and @RequestMapping("/api/v1") annotations
+    - Implement PUT /users/me endpoint
+    - Extract user ID from JWT token using @AuthenticationPrincipal or JWT filter
+    - Validate request body using @Valid annotation
+    - Call UserService to update profile
+    - Return updated UserDTO with HTTP 200
+    - _Requirements: 9.1, 9.5, 9.6, 9.9_
+
+  - [ ] 8.3 Implement UserService for profile updates
+    - Create UserService.java in service package (if not exists)
+    - Add @Service annotation
+    - Implement updateUserProfile(Long userId, String name) method
+    - Fetch user from UserRepository by ID
+    - Update user's name field
+    - Save updated user to database
+    - Return updated user entity
+    - _Requirements: 9.4_
+
+  - [ ] 8.4 Add error handling for profile updates
+    - Handle missing/invalid JWT token → return 401
+    - Handle empty or whitespace-only name → return 400
+    - Handle name exceeding 100 characters → return 400
+    - Handle user not found → return 404
+    - Add appropriate error messages for each case
+    - _Requirements: 9.7, 9.8_
+
+  - [ ]* 8.5 Write unit tests for user profile management
+    - Test PUT /users/me endpoint accepts valid requests
+    - Test endpoint requires Authorization header
+    - Test valid name update returns 200 with updated profile
+    - Test empty name returns 400
+    - Test name exceeding 100 characters returns 400
+    - Test missing JWT token returns 401
+    - Test UserService updates user in database
+    - _Requirements: 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9_
+
+  - [ ]* 8.6 Write property-based tests for user profile management
+    - **Property 3: User Profile Update Round-Trip**
+    - **Validates: Requirements 9.3, 9.4, 9.5, 9.9**
+    - Test that any valid display name (1-100 chars) updates successfully
+    - **Property 4: Invalid Display Name Rejection**
+    - **Validates: Requirements 9.8**
+    - Test that any invalid display name (empty, whitespace, >100 chars) returns 400
+    - **Property 5: Unauthenticated Profile Update Rejection**
+    - **Validates: Requirements 9.7**
+    - Test that any request without valid JWT returns 401
+    - Use jqwik or QuickTheories for property-based testing
+    - Run minimum 100 iterations per property
+
+- [ ] 9. Final checkpoint — Requirement 9
+  - Run mvn test and confirm all tests pass
+  - Verify PUT /api/v1/users/me endpoint works with valid JWT
+  - Verify name validation works correctly
+  - Verify unauthenticated requests are rejected
+  - Ask the user if questions arise before writing any code
+
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for faster MVP
 - Each task references specific requirements for traceability
 - Checkpoints ensure incremental validation
-- Property tests validate universal correctness properties (Properties 1 & 2)
+- Property tests validate universal correctness properties (Properties 1-5)
 - Unit tests validate specific examples and edge cases
 - JwtService implementation may be part of a separate authentication feature - task 6.2 is primarily verification
 - Docker container uses host port 5433 to avoid conflicts with local PostgreSQL installations
+- User profile management (Task 8) requires JWT authentication to be implemented first
