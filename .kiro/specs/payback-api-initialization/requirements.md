@@ -17,6 +17,17 @@ This document defines the requirements for initializing a Spring Boot REST API p
 - **JWT_Token**: JSON Web Token used for authenticating API requests with configurable expiration time
 - **Display_Name**: The user's customizable name stored in the database name field
 - **User_Profile**: The user's account information including id, name, and email
+- **Merchant**: A business partner that offers cashback rewards to users
+- **Cashback_Percentage**: The percentage of transaction amount returned as cashback
+- **Referral_Code**: A unique identifier assigned to each user for tracking referrals
+- **Referral_Relationship**: The connection between a referring user and a referred user
+- **Bonus_Cashback**: Additional cashback awarded for successful referrals
+- **Withdrawal_Request**: A user's request to transfer earned cashback to their UPI account
+- **UPI_ID**: Unified Payments Interface identifier for receiving payments
+- **Admin_Approval**: The process by which administrators authorize withdrawal requests
+- **Email_Notification**: Automated email messages sent to users for important events
+- **Resend_Service**: The email delivery service used for sending notifications
+- **Email_Template**: Pre-formatted email content for specific notification types
 
 ## Requirements
 
@@ -136,3 +147,75 @@ This document defines the requirements for initializing a Spring Boot REST API p
 7. WHEN an unauthenticated request is made, THE Payback_API SHALL return HTTP status 401
 8. WHEN an invalid Display_Name is provided, THE Payback_API SHALL return HTTP status 400 with an error message
 9. THE Payback_API SHALL return the updated User_Profile including id, name, and email
+
+### Requirement 10: Additional Merchant Data
+
+**User Story:** As a system administrator, I want to populate the database with additional merchant partners, so that users have more cashback opportunities across different categories.
+
+#### Acceptance Criteria
+
+1. THE PostgreSQL_Database SHALL contain a Merchant record for Zomato with category "food delivery" and Cashback_Percentage of 5%
+2. THE PostgreSQL_Database SHALL contain a Merchant record for Swiggy with category "food delivery" and Cashback_Percentage of 4%
+3. THE PostgreSQL_Database SHALL contain a Merchant record for MakeMyTrip with category "travel" and Cashback_Percentage of 6%
+4. THE PostgreSQL_Database SHALL contain a Merchant record for boAt with category "electronics" and Cashback_Percentage of 8%
+5. THE PostgreSQL_Database SHALL contain a Merchant record for Meesho with category "fashion" and Cashback_Percentage of 10%
+6. THE PostgreSQL_Database SHALL contain a Merchant record for Tata CLiQ with category "electronics/fashion" and Cashback_Percentage of 7%
+7. THE Payback_API SHALL provide SQL scripts for inserting these Merchant records
+8. WHEN the database is initialized, THE Payback_API SHALL execute the merchant data insertion scripts
+
+### Requirement 11: Referral System Backend
+
+**User Story:** As a user, I want to refer friends and earn bonus cashback, so that I can benefit from growing the platform's user base.
+
+#### Acceptance Criteria
+
+1. WHEN a new user registers, THE Payback_API SHALL generate a unique Referral_Code for that user
+2. THE Referral_Code SHALL be alphanumeric and exactly 8 characters long
+3. THE Payback_API SHALL store the Referral_Code in the PostgreSQL_Database associated with the user
+4. WHEN a user signs up with a valid Referral_Code, THE Payback_API SHALL create a Referral_Relationship linking the new user to the referring user
+5. WHEN a Referral_Relationship is created, THE Payback_API SHALL award Bonus_Cashback to both the referring user and the referred user
+6. THE Payback_API SHALL provide a GET endpoint at /api/v1/referrals/stats for retrieving referral statistics
+7. WHEN the referral stats endpoint is called, THE Payback_API SHALL return the user's Referral_Code, total referrals count, and total Bonus_Cashback earned
+8. THE Payback_API SHALL require a valid JWT_Token for accessing referral endpoints
+9. THE Payback_API SHALL validate that Referral_Codes exist before creating Referral_Relationships
+10. WHEN an invalid Referral_Code is provided during signup, THE Payback_API SHALL return HTTP status 400 with an error message
+
+### Requirement 12: Withdrawal Flow Backend
+
+**User Story:** As a user, I want to withdraw my earned cashback to my UPI account, so that I can use the money for real purchases.
+
+#### Acceptance Criteria
+
+1. THE Payback_API SHALL provide a POST endpoint at /api/v1/withdrawals for creating withdrawal requests
+2. WHEN a withdrawal request is submitted, THE Payback_API SHALL accept a JSON body containing the UPI_ID and withdrawal amount
+3. THE Payback_API SHALL validate that the UPI_ID follows the standard UPI format (username@bankname)
+4. THE Payback_API SHALL validate that the withdrawal amount does not exceed the user's available cashback balance
+5. THE Payback_API SHALL validate that the withdrawal amount is at least 100 rupees
+6. WHEN a valid withdrawal request is received, THE Payback_API SHALL store the Withdrawal_Request in the PostgreSQL_Database with status "PENDING"
+7. THE Payback_API SHALL provide a PUT endpoint at /api/v1/admin/withdrawals/{id}/approve for Admin_Approval
+8. WHEN an administrator approves a withdrawal, THE Payback_API SHALL update the Withdrawal_Request status to "APPROVED"
+9. THE Payback_API SHALL provide a PUT endpoint at /api/v1/admin/withdrawals/{id}/mark-paid for marking withdrawals as paid
+10. WHEN a withdrawal is marked as paid, THE Payback_API SHALL update the Withdrawal_Request status to "PAID" and deduct the amount from the user's cashback balance
+11. THE Payback_API SHALL provide a GET endpoint at /api/v1/withdrawals/history for retrieving the user's withdrawal history
+12. THE Payback_API SHALL require a valid JWT_Token for accessing withdrawal endpoints
+13. THE Payback_API SHALL require administrator privileges for approval and mark-paid endpoints
+14. WHEN an invalid UPI_ID format is provided, THE Payback_API SHALL return HTTP status 400 with an error message
+15. WHEN a withdrawal amount exceeds available balance, THE Payback_API SHALL return HTTP status 400 with an error message
+
+### Requirement 13: Email Notification System
+
+**User Story:** As a user, I want to receive email notifications for important events, so that I stay informed about my account activity and cashback earnings.
+
+#### Acceptance Criteria
+
+1. THE Payback_API SHALL integrate with the Resend_Service for sending Email_Notifications
+2. THE Payback_API SHALL configure Resend_Service API credentials in Application_Properties
+3. WHEN a new user completes registration, THE Payback_API SHALL send a welcome Email_Notification to the user's email address
+4. THE welcome Email_Notification SHALL use a predefined Email_Template containing the user's name and getting started information
+5. WHEN a transaction is confirmed and cashback is credited, THE Payback_API SHALL send a cashback confirmation Email_Notification
+6. THE cashback confirmation Email_Notification SHALL include the transaction amount, cashback amount, and merchant name
+7. THE Payback_API SHALL use the Resend_Service free tier for email delivery
+8. THE Payback_API SHALL store Email_Template content in the codebase for maintainability
+9. WHEN an email fails to send, THE Payback_API SHALL log the error but not block the primary operation
+10. THE Payback_API SHALL format emails with HTML content for better presentation
+11. THE Email_Template SHALL include the Payback branding and styling

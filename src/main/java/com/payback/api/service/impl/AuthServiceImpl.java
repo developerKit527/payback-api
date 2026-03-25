@@ -8,11 +8,14 @@ import com.payback.api.entity.User;
 import com.payback.api.repository.UserRepository;
 import com.payback.api.service.AuthService;
 import com.payback.api.service.JwtService;
+import com.payback.api.service.ReferralService;
 import com.payback.api.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final WalletService walletService;
+    private final ReferralService referralService;
 
     @Override
     @Transactional
@@ -29,10 +33,25 @@ public class AuthServiceImpl implements AuthService {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
             throw new IllegalArgumentException("Email already registered");
         }
-        User user = new User(null, request.getName(), request.getEmail(),
-                passwordEncoder.encode(request.getPassword()));
+        
+        // Generate unique referral code for new user
+        String referralCode = referralService.generateReferralCode();
+        
+        User user = new User();
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setReferralCode(referralCode);
+        user.setCashbackBalance(BigDecimal.ZERO);
+        
         user = userRepository.save(user);
         walletService.createWallet(user.getId(), null);
+        
+        // Handle referral code if provided
+        if (request.getReferralCode() != null && !request.getReferralCode().trim().isEmpty()) {
+            referralService.createReferral(request.getReferralCode(), user);
+        }
+        
         String token = jwtService.generateToken(user);
         return new AuthResponseDTO(token, new UserDTO(user.getId(), user.getName(), user.getEmail()));
     }

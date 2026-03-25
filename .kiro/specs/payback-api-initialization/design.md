@@ -51,18 +51,39 @@ payback-api/
 │   │   │               ├── PaybackApplication.java
 │   │   │               ├── controller/
 │   │   │               │   ├── HealthController.java
-│   │   │               │   └── UserController.java
+│   │   │               │   ├── UserController.java
+│   │   │               │   ├── ReferralController.java
+│   │   │               │   └── WithdrawalController.java
 │   │   │               ├── service/
-│   │   │               │   └── UserService.java
+│   │   │               │   ├── UserService.java
+│   │   │               │   ├── ReferralService.java
+│   │   │               │   ├── WithdrawalService.java
+│   │   │               │   └── EmailService.java
 │   │   │               ├── repository/
-│   │   │               │   └── UserRepository.java
+│   │   │               │   ├── UserRepository.java
+│   │   │               │   ├── MerchantRepository.java
+│   │   │               │   ├── ReferralRepository.java
+│   │   │               │   └── WithdrawalRepository.java
 │   │   │               ├── entity/
-│   │   │               │   └── User.java
-│   │   │               └── dto/
-│   │   │                   ├── UpdateUserRequestDTO.java
-│   │   │                   └── UserDTO.java
+│   │   │               │   ├── User.java
+│   │   │               │   ├── Merchant.java
+│   │   │               │   ├── Referral.java
+│   │   │               │   └── Withdrawal.java
+│   │   │               ├── dto/
+│   │   │               │   ├── UpdateUserRequestDTO.java
+│   │   │               │   ├── UserDTO.java
+│   │   │               │   ├── ReferralStatsDTO.java
+│   │   │               │   ├── WithdrawalRequestDTO.java
+│   │   │               │   └── WithdrawalDTO.java
+│   │   │               └── enums/
+│   │   │                   └── WithdrawalStatus.java
 │   │   └── resources/
-│   │       └── application.properties
+│   │       ├── application.properties
+│   │       ├── data.sql
+│   │       └── templates/
+│   │           └── email/
+│   │               ├── welcome.html
+│   │               └── cashback-confirmation.html
 ├── docker-compose.yml
 └── pom.xml
 ```
@@ -115,6 +136,8 @@ Body: {
 - `spring-boot-starter-data-jpa`: Database ORM
 - `postgresql`: PostgreSQL JDBC driver
 - `lombok`: Boilerplate code reduction
+- `spring-boot-starter-mail` or Resend Java SDK: Email sending capabilities
+- `spring-boot-starter-thymeleaf`: Email template rendering
 
 **Build Configuration**:
 - Spring Boot version: 3.2
@@ -145,6 +168,23 @@ server.port=8080
 **JWT Configuration**:
 ```properties
 jwt.expiration=${JWT_EXPIRATION:604800000}
+```
+
+**Resend Email Configuration**:
+```properties
+resend.api.key=${RESEND_API_KEY}
+resend.from.email=noreply@payback.com
+resend.from.name=Payback
+```
+
+**Referral Configuration**:
+```properties
+referral.bonus.amount=50.00
+```
+
+**Withdrawal Configuration**:
+```properties
+withdrawal.minimum.amount=100.00
 ```
 
 **Configuration Details**:
@@ -316,6 +356,9 @@ public class UserDTO {
   - `@Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id`
   - `@Column(nullable = false, length = 100) private String name`
   - `@Column(nullable = false, unique = true) private String email`
+  - `@Column(unique = true, length = 8) private String referralCode`
+  - `@Column(nullable = false) private BigDecimal cashbackBalance`
+  - `@OneToMany(mappedBy = "referrer") private List<Referral> referrals`
 
 **Security Considerations**:
 - JWT token validation ensures only authenticated users can update their profile
@@ -365,6 +408,15 @@ public class User {
     
     @Column(nullable = false, unique = true)
     private String email;
+    
+    @Column(unique = true, length = 8)
+    private String referralCode;
+    
+    @Column(nullable = false)
+    private BigDecimal cashbackBalance;
+    
+    @OneToMany(mappedBy = "referrer")
+    private List<Referral> referrals;
 }
 ```
 
@@ -372,6 +424,9 @@ public class User {
 - `id`: Primary key, auto-generated
 - `name`: User's display name, max 100 characters, not null
 - `email`: User's email address, unique, not null
+- `referralCode`: User's unique 8-character referral code
+- `cashbackBalance`: User's available cashback balance in rupees
+- `referrals`: List of referrals made by this user
 
 ### Update User Request Model
 
@@ -409,6 +464,187 @@ public class User {
 
 **Usage**: Response body for PUT /api/v1/users/me endpoint
 
+### Merchant Entity Model
+
+**Database Table**: `merchants`
+
+**Structure**:
+```java
+@Entity
+@Table(name = "merchants")
+public class Merchant {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false, unique = true)
+    private String name;
+    
+    @Column(nullable = false)
+    private String category;
+    
+    @Column(nullable = false)
+    private BigDecimal cashbackPercentage;
+}
+```
+
+**Field Specifications**:
+- `id`: Primary key, auto-generated
+- `name`: Merchant name (e.g., "Zomato"), unique
+- `category`: Merchant category (e.g., "food delivery")
+- `cashbackPercentage`: Cashback percentage (e.g., 5.0 for 5%)
+
+**Initial Data**:
+- Zomato: food delivery, 5%
+- Swiggy: food delivery, 4%
+- MakeMyTrip: travel, 6%
+- boAt: electronics, 8%
+- Meesho: fashion, 10%
+- Tata CLiQ: electronics/fashion, 7%
+
+### Referral Entity Model
+
+**Database Table**: `referrals`
+
+**Structure**:
+```java
+@Entity
+@Table(name = "referrals")
+public class Referral {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @ManyToOne
+    @JoinColumn(name = "referrer_id", nullable = false)
+    private User referrer;
+    
+    @ManyToOne
+    @JoinColumn(name = "referred_id", nullable = false)
+    private User referred;
+    
+    @Column(nullable = false)
+    private BigDecimal bonusCashback;
+    
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+}
+```
+
+**Field Specifications**:
+- `id`: Primary key, auto-generated
+- `referrer`: User who made the referral
+- `referred`: User who was referred
+- `bonusCashback`: Bonus cashback amount awarded
+- `createdAt`: Timestamp of referral creation
+
+### Referral Stats Response Model
+
+**Structure**:
+```json
+{
+  "referralCode": "string",
+  "totalReferrals": "number",
+  "totalBonusCashback": "number"
+}
+```
+
+**Field Specifications**:
+- `referralCode`: User's unique 8-character referral code
+- `totalReferrals`: Count of successful referrals
+- `totalBonusCashback`: Total bonus cashback earned from referrals
+
+**Usage**: Response body for GET /api/v1/referrals/stats endpoint
+
+### Withdrawal Entity Model
+
+**Database Table**: `withdrawals`
+
+**Structure**:
+```java
+@Entity
+@Table(name = "withdrawals")
+public class Withdrawal {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+    
+    @Column(nullable = false)
+    private String upiId;
+    
+    @Column(nullable = false)
+    private BigDecimal amount;
+    
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private WithdrawalStatus status;
+    
+    @Column(nullable = false)
+    private LocalDateTime requestedAt;
+    
+    @Column
+    private LocalDateTime processedAt;
+}
+```
+
+**Field Specifications**:
+- `id`: Primary key, auto-generated
+- `user`: User requesting withdrawal
+- `upiId`: UPI ID for payment (format: username@bankname)
+- `amount`: Withdrawal amount in rupees
+- `status`: Withdrawal status (PENDING, APPROVED, PAID, REJECTED)
+- `requestedAt`: Timestamp of request creation
+- `processedAt`: Timestamp of status change to PAID
+
+### Withdrawal Request Model
+
+**Structure**:
+```json
+{
+  "upiId": "string",
+  "amount": "number"
+}
+```
+
+**Field Specifications**:
+- `upiId`: UPI ID in format username@bankname
+- `amount`: Withdrawal amount (minimum 100 rupees)
+
+**Validation Rules**:
+- UPI ID must match pattern: `^[a-zA-Z0-9._-]+@[a-zA-Z]+$`
+- Amount must be >= 100
+- Amount must be <= user's cashback balance
+
+**Usage**: Request body for POST /api/v1/withdrawals endpoint
+
+### Withdrawal Response Model
+
+**Structure**:
+```json
+{
+  "id": "number",
+  "upiId": "string",
+  "amount": "number",
+  "status": "string",
+  "requestedAt": "string",
+  "processedAt": "string"
+}
+```
+
+**Field Specifications**:
+- `id`: Withdrawal request ID
+- `upiId`: UPI ID for payment
+- `amount`: Withdrawal amount
+- `status`: Current status (PENDING, APPROVED, PAID, REJECTED)
+- `requestedAt`: ISO 8601 timestamp
+- `processedAt`: ISO 8601 timestamp (null if not processed)
+
+**Usage**: Response body for withdrawal endpoints
+
 ## Correctness Properties
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
@@ -442,6 +678,114 @@ public class User {
 *For any* profile update request without a valid JWT token (missing, expired, or malformed), the API SHALL return HTTP status 401 (Unauthorized).
 
 **Validates: Requirements 9.7**
+
+### Property 6: Referral Code Generation and Storage
+
+*For any* user registration, the API SHALL generate a unique alphanumeric referral code exactly 8 characters long and store it in the database associated with that user.
+
+**Validates: Requirements 11.1, 11.2, 11.3**
+
+### Property 7: Referral Relationship Creation
+
+*For any* user signup with a valid referral code, the API SHALL create a referral relationship linking the new user to the referring user.
+
+**Validates: Requirements 11.4**
+
+### Property 8: Referral Bonus Cashback Award
+
+*For any* referral relationship created, the API SHALL award bonus cashback to both the referring user and the referred user.
+
+**Validates: Requirements 11.5**
+
+### Property 9: Referral Stats Accuracy
+
+*For any* authenticated user, when the referral stats endpoint is called, the API SHALL return the user's referral code, the correct count of total referrals, and the correct sum of total bonus cashback earned.
+
+**Validates: Requirements 11.7**
+
+### Property 10: Referral Endpoint Authentication
+
+*For any* request to referral endpoints without a valid JWT token, the API SHALL return HTTP status 401 (Unauthorized).
+
+**Validates: Requirements 11.8**
+
+### Property 11: Invalid Referral Code Rejection
+
+*For any* signup attempt with a non-existent referral code, the API SHALL return HTTP status 400 with an error message.
+
+**Validates: Requirements 11.9, 11.10**
+
+### Property 12: UPI ID Format Validation
+
+*For any* withdrawal request with an invalid UPI ID format (not matching username@bankname pattern), the API SHALL return HTTP status 400 with an error message.
+
+**Validates: Requirements 12.3, 12.14**
+
+### Property 13: Withdrawal Amount Balance Validation
+
+*For any* withdrawal request where the amount exceeds the user's available cashback balance, the API SHALL return HTTP status 400 with an error message.
+
+**Validates: Requirements 12.4, 12.15**
+
+### Property 14: Withdrawal Minimum Amount Validation
+
+*For any* withdrawal request with an amount less than 100 rupees, the API SHALL return HTTP status 400 with an error message.
+
+**Validates: Requirements 12.5**
+
+### Property 15: Withdrawal Request Storage
+
+*For any* valid withdrawal request, the API SHALL store the withdrawal in the database with status "PENDING" and the request SHALL be retrievable via the withdrawal history endpoint.
+
+**Validates: Requirements 12.6**
+
+### Property 16: Withdrawal Approval Status Update
+
+*For any* pending withdrawal, when an administrator approves it, the API SHALL update the withdrawal status to "APPROVED".
+
+**Validates: Requirements 12.8**
+
+### Property 17: Withdrawal Payment Processing
+
+*For any* approved withdrawal, when marked as paid, the API SHALL update the withdrawal status to "PAID" and deduct the withdrawal amount from the user's cashback balance.
+
+**Validates: Requirements 12.10**
+
+### Property 18: Withdrawal Endpoint Authentication
+
+*For any* request to withdrawal endpoints without a valid JWT token, the API SHALL return HTTP status 401 (Unauthorized).
+
+**Validates: Requirements 12.12**
+
+### Property 19: Withdrawal Admin Authorization
+
+*For any* request to admin withdrawal endpoints (approve, mark-paid) from a non-admin user, the API SHALL return HTTP status 403 (Forbidden).
+
+**Validates: Requirements 12.13**
+
+### Property 20: Welcome Email Delivery
+
+*For any* user registration, the API SHALL send a welcome email to the user's email address containing the user's name and getting started information.
+
+**Validates: Requirements 13.3, 13.4**
+
+### Property 21: Cashback Confirmation Email Delivery
+
+*For any* confirmed transaction with cashback credit, the API SHALL send a cashback confirmation email containing the transaction amount, cashback amount, and merchant name.
+
+**Validates: Requirements 13.5, 13.6**
+
+### Property 22: Email Failure Resilience
+
+*For any* operation that triggers an email notification, if the email fails to send, the API SHALL log the error and continue with the primary operation without blocking or failing.
+
+**Validates: Requirements 13.9**
+
+### Property 23: Email HTML Formatting
+
+*For any* email sent by the API, the email content SHALL be formatted as HTML.
+
+**Validates: Requirements 13.10**
 
 ## Error Handling
 
@@ -477,6 +821,30 @@ public class User {
 - **User Not Found**: Return 404 Not Found with message "User not found" (edge case if JWT references non-existent user)
 - **Database Error**: Return 500 Internal Server Error with generic message, log detailed error
 
+**Referral System Errors**:
+- **Invalid Referral Code**: Return 400 Bad Request with message "Invalid referral code"
+- **Referral Code Generation Collision**: Retry generation with new random code (max 5 attempts)
+- **Self-Referral Attempt**: Return 400 Bad Request with message "Cannot use your own referral code"
+- **Duplicate Referral**: Return 400 Bad Request with message "User already registered with a referral code"
+- **Missing JWT Token**: Return 401 Unauthorized with message "Authentication required"
+
+**Withdrawal Flow Errors**:
+- **Invalid UPI ID Format**: Return 400 Bad Request with message "Invalid UPI ID format. Expected: username@bankname"
+- **Insufficient Balance**: Return 400 Bad Request with message "Withdrawal amount exceeds available balance"
+- **Below Minimum Amount**: Return 400 Bad Request with message "Minimum withdrawal amount is 100 rupees"
+- **Withdrawal Not Found**: Return 404 Not Found with message "Withdrawal request not found"
+- **Invalid Status Transition**: Return 400 Bad Request with message "Cannot approve/pay withdrawal in current status"
+- **Missing JWT Token**: Return 401 Unauthorized with message "Authentication required"
+- **Non-Admin Access**: Return 403 Forbidden with message "Admin privileges required"
+- **Database Error**: Return 500 Internal Server Error with generic message, log detailed error
+
+**Email Notification Errors**:
+- **Email Send Failure**: Log error with full context (user ID, email type, error message), continue with primary operation
+- **Invalid Email Address**: Log warning, skip email sending, continue with primary operation
+- **Template Rendering Error**: Log error with template name and variables, continue with primary operation
+- **Resend API Error**: Log error with API response, consider retry for transient failures
+- **Missing Configuration**: Log error at startup, fail fast if email credentials not configured
+
 ## Testing Strategy
 
 ### Unit Testing
@@ -509,6 +877,37 @@ Unit tests will focus on specific examples and edge cases:
 - Test updateUserProfile method returns updated user entity
 - Test updateUserProfile throws exception when user not found
 
+**Merchant Data Tests**:
+- Test Zomato merchant exists with category "food delivery" and 5% cashback
+- Test Swiggy merchant exists with category "food delivery" and 4% cashback
+- Test MakeMyTrip merchant exists with category "travel" and 6% cashback
+- Test boAt merchant exists with category "electronics" and 8% cashback
+- Test Meesho merchant exists with category "fashion" and 10% cashback
+- Test Tata CLiQ merchant exists with category "electronics/fashion" and 7% cashback
+- Test data.sql script exists and is syntactically valid
+
+**Referral Service Tests**:
+- Test generateReferralCode creates 8-character alphanumeric code
+- Test createReferral creates relationship between users
+- Test createReferral awards bonus cashback to both users
+- Test getReferralStats returns correct statistics
+- Test specific example: user with 3 referrals returns count of 3
+
+**Withdrawal Service Tests**:
+- Test createWithdrawalRequest validates UPI ID format
+- Test createWithdrawalRequest validates minimum amount (100 rupees)
+- Test createWithdrawalRequest validates balance sufficiency
+- Test approveWithdrawal changes status to APPROVED
+- Test markAsPaid changes status to PAID and deducts balance
+- Test specific example: withdrawal of 500 rupees with balance of 1000 succeeds
+
+**Email Service Tests**:
+- Test sendWelcomeEmail sends email with user name
+- Test sendCashbackConfirmation includes transaction details
+- Test email sending failure is logged but doesn't throw exception
+- Test email templates exist in resources/templates/email/
+- Test Resend API configuration is loaded from application.properties
+
 ### Integration Testing
 
 Integration tests will verify component interactions:
@@ -529,6 +928,24 @@ Integration tests will verify component interactions:
 - Test profile update returns correct response structure
 - Test unauthenticated request is rejected
 - Test invalid name validation works end-to-end
+
+**End-to-End Referral Flow**:
+- Test user registration generates referral code
+- Test signup with referral code creates relationship
+- Test referral stats endpoint returns correct data
+- Test invalid referral code is rejected
+
+**End-to-End Withdrawal Flow**:
+- Test user can create withdrawal request
+- Test admin can approve withdrawal
+- Test admin can mark withdrawal as paid
+- Test balance is deducted after payment
+- Test withdrawal history shows all user withdrawals
+
+**End-to-End Email Notifications**:
+- Test welcome email is sent on registration
+- Test cashback confirmation email is sent on transaction
+- Test email failure doesn't block registration or transaction
 
 ### Property-Based Testing
 
@@ -633,6 +1050,277 @@ Arbitrary<String> invalidTokens() {
 }
 ```
 
+**Property Test 6: Referral Code Generation and Storage**
+```java
+// Feature: payback-api-initialization, Property 6: For any user registration,
+// the API SHALL generate a unique alphanumeric referral code exactly 8 characters long and store it
+@Property
+void referralCodeGenerationAndStorage(@ForAll User user) {
+    // Generate random user registration data
+    // Register user
+    // Query database for user's referral code
+    // Assert: referral code exists
+    // Assert: referral code is exactly 8 characters
+    // Assert: referral code is alphanumeric (matches [A-Za-z0-9]{8})
+    // Assert: referral code is unique (not used by other users)
+}
+```
+
+**Property Test 7: Referral Relationship Creation**
+```java
+// Feature: payback-api-initialization, Property 7: For any user signup with valid referral code,
+// the API SHALL create a referral relationship linking the new user to the referring user
+@Property
+void referralRelationshipCreation(@ForAll User referrer, @ForAll User newUser) {
+    // Generate random referring user with referral code
+    // Generate random new user
+    // Sign up new user with referrer's code
+    // Query database for referral relationship
+    // Assert: relationship exists linking newUser to referrer
+}
+```
+
+**Property Test 8: Referral Bonus Cashback Award**
+```java
+// Feature: payback-api-initialization, Property 8: For any referral relationship created,
+// the API SHALL award bonus cashback to both users
+@Property
+void referralBonusCashbackAward(@ForAll User referrer, @ForAll User newUser) {
+    // Generate random users
+    // Record initial cashback balances
+    // Create referral relationship
+    // Query updated cashback balances
+    // Assert: referrer's balance increased by bonus amount
+    // Assert: newUser's balance increased by bonus amount
+}
+```
+
+**Property Test 9: Referral Stats Accuracy**
+```java
+// Feature: payback-api-initialization, Property 9: For any authenticated user,
+// referral stats SHALL return correct code, count, and total bonus cashback
+@Property
+void referralStatsAccuracy(@ForAll User user, @ForAll("referralList") List<Referral> referrals) {
+    // Generate random user with random referrals
+    // Call GET /api/v1/referrals/stats
+    // Assert: response contains user's referral code
+    // Assert: totalReferrals == referrals.size()
+    // Assert: totalBonusCashback == sum of all referral bonuses
+}
+```
+
+**Property Test 10: Referral Endpoint Authentication**
+```java
+// Feature: payback-api-initialization, Property 10: For any request to referral endpoints without valid JWT,
+// the API SHALL return HTTP status 401
+@Property
+void referralEndpointAuthentication(@ForAll("invalidTokens") String token) {
+    // Generate random invalid token
+    // Make request to /api/v1/referrals/stats with invalid token
+    // Assert: response status == 401
+}
+```
+
+**Property Test 11: Invalid Referral Code Rejection**
+```java
+// Feature: payback-api-initialization, Property 11: For any signup with non-existent referral code,
+// the API SHALL return HTTP status 400 with error message
+@Property
+void invalidReferralCodeRejection(@ForAll("nonExistentCodes") String code, @ForAll User newUser) {
+    // Generate random non-existent referral code
+    // Generate random new user
+    // Attempt signup with invalid code
+    // Assert: response status == 400
+    // Assert: response contains error message
+}
+```
+
+**Property Test 12: UPI ID Format Validation**
+```java
+// Feature: payback-api-initialization, Property 12: For any withdrawal with invalid UPI ID format,
+// the API SHALL return HTTP status 400 with error message
+@Property
+void upiIdFormatValidation(@ForAll("invalidUpiIds") String upiId, @ForAll BigDecimal amount) {
+    // Generate random invalid UPI ID (not matching username@bankname)
+    // Generate random valid amount
+    // Attempt withdrawal request
+    // Assert: response status == 400
+    // Assert: response contains error message about UPI format
+}
+
+@Provide
+Arbitrary<String> invalidUpiIds() {
+    return Arbitraries.oneOf(
+        Arbitraries.just(""),  // empty
+        Arbitraries.just("username"),  // missing @bankname
+        Arbitraries.just("@bankname"),  // missing username
+        Arbitraries.strings().withChars('@').ofLength(20),  // multiple @
+        Arbitraries.just("user name@bank")  // spaces
+    );
+}
+```
+
+**Property Test 13: Withdrawal Amount Balance Validation**
+```java
+// Feature: payback-api-initialization, Property 13: For any withdrawal exceeding balance,
+// the API SHALL return HTTP status 400 with error message
+@Property
+void withdrawalAmountBalanceValidation(@ForAll User user, @ForAll("excessiveAmounts") BigDecimal amount) {
+    // Generate random user with known balance
+    // Generate random amount exceeding balance
+    // Attempt withdrawal request
+    // Assert: response status == 400
+    // Assert: response contains error message about insufficient balance
+}
+```
+
+**Property Test 14: Withdrawal Minimum Amount Validation**
+```java
+// Feature: payback-api-initialization, Property 14: For any withdrawal below 100 rupees,
+// the API SHALL return HTTP status 400 with error message
+@Property
+void withdrawalMinimumAmountValidation(@ForAll("belowMinimum") BigDecimal amount) {
+    // Generate random amount below 100
+    // Generate valid UPI ID
+    // Attempt withdrawal request
+    // Assert: response status == 400
+    // Assert: response contains error message about minimum amount
+}
+
+@Provide
+Arbitrary<BigDecimal> belowMinimum() {
+    return Arbitraries.bigDecimals()
+        .between(BigDecimal.ZERO, new BigDecimal("99.99"))
+        .ofScale(2);
+}
+```
+
+**Property Test 15: Withdrawal Request Storage**
+```java
+// Feature: payback-api-initialization, Property 15: For any valid withdrawal request,
+// the API SHALL store it with status PENDING and be retrievable
+@Property
+void withdrawalRequestStorage(@ForAll("validUpiIds") String upiId, @ForAll("validAmounts") BigDecimal amount) {
+    // Generate random valid UPI ID and amount
+    // Create withdrawal request
+    // Assert: response status == 201
+    // Query withdrawal history
+    // Assert: withdrawal exists with status PENDING
+    // Assert: withdrawal has correct upiId and amount
+}
+```
+
+**Property Test 16: Withdrawal Approval Status Update**
+```java
+// Feature: payback-api-initialization, Property 16: For any pending withdrawal,
+// when approved, status SHALL update to APPROVED
+@Property
+void withdrawalApprovalStatusUpdate(@ForAll Withdrawal pendingWithdrawal) {
+    // Generate random pending withdrawal
+    // Admin approves withdrawal
+    // Query withdrawal from database
+    // Assert: status == APPROVED
+}
+```
+
+**Property Test 17: Withdrawal Payment Processing**
+```java
+// Feature: payback-api-initialization, Property 17: For any approved withdrawal,
+// when marked paid, status SHALL be PAID and balance SHALL be deducted
+@Property
+void withdrawalPaymentProcessing(@ForAll Withdrawal approvedWithdrawal) {
+    // Generate random approved withdrawal
+    // Record user's initial balance
+    // Admin marks withdrawal as paid
+    // Query withdrawal and user balance
+    // Assert: withdrawal status == PAID
+    // Assert: user balance == initialBalance - withdrawal amount
+}
+```
+
+**Property Test 18: Withdrawal Endpoint Authentication**
+```java
+// Feature: payback-api-initialization, Property 18: For any request to withdrawal endpoints without valid JWT,
+// the API SHALL return HTTP status 401
+@Property
+void withdrawalEndpointAuthentication(@ForAll("invalidTokens") String token) {
+    // Generate random invalid token
+    // Make request to withdrawal endpoint with invalid token
+    // Assert: response status == 401
+}
+```
+
+**Property Test 19: Withdrawal Admin Authorization**
+```java
+// Feature: payback-api-initialization, Property 19: For any request to admin withdrawal endpoints from non-admin,
+// the API SHALL return HTTP status 403
+@Property
+void withdrawalAdminAuthorization(@ForAll("nonAdminUsers") User user, @ForAll Withdrawal withdrawal) {
+    // Generate random non-admin user with valid JWT
+    // Attempt to approve or mark-paid withdrawal
+    // Assert: response status == 403
+}
+```
+
+**Property Test 20: Welcome Email Delivery**
+```java
+// Feature: payback-api-initialization, Property 20: For any user registration,
+// welcome email SHALL be sent with user's name and getting started info
+@Property
+void welcomeEmailDelivery(@ForAll User user) {
+    // Generate random user
+    // Register user
+    // Verify email was sent (check email service mock/spy)
+    // Assert: email recipient == user.email
+    // Assert: email content contains user.name
+    // Assert: email content contains getting started information
+}
+```
+
+**Property Test 21: Cashback Confirmation Email Delivery**
+```java
+// Feature: payback-api-initialization, Property 21: For any cashback transaction,
+// confirmation email SHALL include transaction amount, cashback amount, and merchant name
+@Property
+void cashbackConfirmationEmailDelivery(@ForAll Transaction transaction) {
+    // Generate random transaction with cashback
+    // Process transaction
+    // Verify email was sent
+    // Assert: email content contains transaction amount
+    // Assert: email content contains cashback amount
+    // Assert: email content contains merchant name
+}
+```
+
+**Property Test 22: Email Failure Resilience**
+```java
+// Feature: payback-api-initialization, Property 22: For any operation triggering email,
+// if email fails, operation SHALL continue and error SHALL be logged
+@Property
+void emailFailureResilience(@ForAll User user) {
+    // Generate random user
+    // Configure email service to fail
+    // Register user (triggers welcome email)
+    // Assert: registration succeeds (returns 201)
+    // Assert: user exists in database
+    // Assert: error was logged
+}
+```
+
+**Property Test 23: Email HTML Formatting**
+```java
+// Feature: payback-api-initialization, Property 23: For any email sent,
+// content SHALL be formatted as HTML
+@Property
+void emailHtmlFormatting(@ForAll("emailTypes") String emailType, @ForAll User user) {
+    // Generate random email type (welcome, cashback confirmation)
+    // Trigger email sending
+    // Capture email content
+    // Assert: content contains HTML tags (e.g., <html>, <body>, <p>)
+    // Assert: content is valid HTML
+}
+```
+
 ### Testing Approach
 
 This feature uses a dual testing approach:
@@ -663,6 +1351,157 @@ Together, these provide comprehensive coverage where unit tests catch concrete b
 - Production: Override sensitive values via environment variables
 - Docker: Database accessible on host port 5433, application connects to internal port 5432
 
+### 8. Merchant Data Management
+
+**Purpose**: Populate the database with merchant partner information for cashback opportunities
+
+**Implementation**:
+- SQL script location: `src/main/resources/db/migration/` or `src/main/resources/data.sql`
+- Merchant entity with fields: name, category, cashback_percentage
+
+**Merchant Records**:
+- Zomato: food delivery, 5%
+- Swiggy: food delivery, 4%
+- MakeMyTrip: travel, 6%
+- boAt: electronics, 8%
+- Meesho: fashion, 10%
+- Tata CLiQ: electronics/fashion, 7%
+
+**Database Initialization**:
+- Use Spring Boot's data.sql or Flyway/Liquibase migrations
+- Execute on application startup
+- Idempotent inserts (use INSERT ... ON CONFLICT DO NOTHING or similar)
+
+### 9. Referral System
+
+**Purpose**: Enable users to refer friends and earn bonus cashback
+
+**Components**:
+
+**Entity Layer** (`Referral.java`):
+- Class location: `com.payback.api.entity.Referral`
+- Fields:
+  - `@Id @GeneratedValue private Long id`
+  - `@ManyToOne private User referrer` (the user who referred)
+  - `@ManyToOne private User referred` (the new user)
+  - `@Column private BigDecimal bonusCashback`
+  - `@Column private LocalDateTime createdAt`
+
+**User Entity Updates**:
+- Add field: `@Column(unique = true, length = 8) private String referralCode`
+- Add field: `@OneToMany private List<Referral> referrals`
+
+**Service Layer** (`ReferralService.java`):
+- `generateReferralCode()`: Generate unique 8-character alphanumeric code
+- `createReferral(String referralCode, User newUser)`: Create referral relationship and award bonus
+- `getReferralStats(Long userId)`: Get user's referral statistics
+
+**Controller Layer** (`ReferralController.java`):
+- `GET /api/v1/referrals/stats`: Return referral code, count, and total bonus cashback
+- Requires JWT authentication
+
+**Referral Code Generation**:
+- Algorithm: Random alphanumeric string (A-Z, a-z, 0-9)
+- Length: Exactly 8 characters
+- Uniqueness: Check database before assigning
+- Generated during user registration
+
+**Bonus Cashback Logic**:
+- Award bonus to both referrer and referred user
+- Amount configurable via application.properties
+- Credited immediately upon successful referral
+
+### 10. Withdrawal Flow
+
+**Purpose**: Allow users to withdraw earned cashback to UPI accounts with admin approval
+
+**Components**:
+
+**Entity Layer** (`Withdrawal.java`):
+- Class location: `com.payback.api.entity.Withdrawal`
+- Fields:
+  - `@Id @GeneratedValue private Long id`
+  - `@ManyToOne private User user`
+  - `@Column private String upiId`
+  - `@Column private BigDecimal amount`
+  - `@Enumerated private WithdrawalStatus status` (PENDING, APPROVED, PAID, REJECTED)
+  - `@Column private LocalDateTime requestedAt`
+  - `@Column private LocalDateTime processedAt`
+
+**User Entity Updates**:
+- Add field: `@Column private BigDecimal cashbackBalance`
+
+**Service Layer** (`WithdrawalService.java`):
+- `createWithdrawalRequest(Long userId, String upiId, BigDecimal amount)`: Validate and create request
+- `approveWithdrawal(Long withdrawalId)`: Admin approval
+- `markAsPaid(Long withdrawalId)`: Mark paid and deduct balance
+- `getWithdrawalHistory(Long userId)`: Get user's withdrawal history
+
+**Controller Layer** (`WithdrawalController.java`):
+- `POST /api/v1/withdrawals`: Create withdrawal request (user endpoint)
+- `GET /api/v1/withdrawals/history`: Get withdrawal history (user endpoint)
+- `PUT /api/v1/admin/withdrawals/{id}/approve`: Approve withdrawal (admin endpoint)
+- `PUT /api/v1/admin/withdrawals/{id}/mark-paid`: Mark as paid (admin endpoint)
+
+**Validation Rules**:
+- UPI ID format: `username@bankname` (regex: `^[a-zA-Z0-9._-]+@[a-zA-Z]+$`)
+- Minimum withdrawal: 100 rupees
+- Maximum withdrawal: User's available cashback balance
+- Status transitions: PENDING → APPROVED → PAID
+
+**Authorization**:
+- User endpoints: Require valid JWT token
+- Admin endpoints: Require JWT token with admin role
+
+### 11. Email Notification System
+
+**Purpose**: Send automated email notifications for important user events
+
+**Components**:
+
+**Email Service Integration**:
+- Service: Resend (https://resend.com)
+- Configuration in `application.properties`:
+  ```properties
+  resend.api.key=${RESEND_API_KEY}
+  resend.from.email=noreply@payback.com
+  resend.from.name=Payback
+  ```
+
+**Service Layer** (`EmailService.java`):
+- Class location: `com.payback.api.service.EmailService`
+- `sendWelcomeEmail(User user)`: Send welcome email to new users
+- `sendCashbackConfirmation(User user, Transaction transaction)`: Send cashback confirmation
+- Error handling: Log failures but don't block primary operations
+
+**Email Templates**:
+- Location: `src/main/resources/templates/email/`
+- Format: HTML with inline CSS
+- Templates:
+  - `welcome.html`: Welcome email with user name and getting started info
+  - `cashback-confirmation.html`: Transaction amount, cashback amount, merchant name
+
+**Template Engine**:
+- Use Thymeleaf or similar for template rendering
+- Variables: user name, transaction details, cashback amounts
+
+**Email Content Requirements**:
+- HTML formatted for better presentation
+- Include Payback branding (logo, colors, styling)
+- Responsive design for mobile devices
+- Plain text fallback
+
+**Integration Points**:
+- User registration: Trigger welcome email
+- Cashback credit: Trigger confirmation email
+- Async processing: Use Spring's `@Async` to avoid blocking
+
+**Error Handling**:
+- Catch email sending exceptions
+- Log errors with full context
+- Continue with primary operation
+- Consider retry mechanism for transient failures
+
 ### Future Enhancements
 
 - Add actuator endpoints for detailed health metrics
@@ -670,3 +1509,7 @@ Together, these provide comprehensive coverage where unit tests catch concrete b
 - Add token revocation capability
 - Implement comprehensive logging and monitoring
 - Add API documentation with Swagger/OpenAPI
+- Implement withdrawal rejection flow
+- Add email notification for withdrawal status changes
+- Implement referral code sharing functionality
+- Add merchant management API endpoints
